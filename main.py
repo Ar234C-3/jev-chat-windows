@@ -19,6 +19,7 @@ from app.fill import fill
 from app.overlay import Overlay
 from app.version import VERSION
 from core.engine import analyze
+from app.i18n import T
 
 # {会话名: {history, result, rev, target, senders}}：每个会话各自的上下文、上次结果和版本号，互不串味
 # history 里是 [(who, text, name)]，engine 只认 her/me，name 是群里的发言人（单聊/自己说的是 None）；
@@ -45,9 +46,9 @@ def target_of(title):
 
 def fill_reply(text):
     if state["hwnd"] is None:  # 子进程重开过，hwnd 可能换了，用最新的
-        raise RuntimeError("未找到聊天窗口，请确认已经打开")
+        raise RuntimeError(T("未找到聊天窗口，请确认已经打开"))
     if state["area"] is None:
-        raise RuntimeError("输入区域尚不可用，请确认聊天窗口可见（不要最小化）")
+        raise RuntimeError(T("输入区域尚不可用，请确认聊天窗口可见（不要最小化）"))
     if settings.reply_target() and ov.at_prefix_enabled():
         target = target_of(ov.current_chat())  # 填进去的是界面上正看着的那个会话的对象
         if target:
@@ -96,7 +97,7 @@ def on_toggle_capture(on):
         try:
             state["hwnd"] = find_wechat_hwnd()
         except RuntimeError:
-            ov.set_capture(False, "未找到聊天窗口，打开后再开启采集")
+            ov.set_capture(False, T("未找到聊天窗口，打开后再开启采集"))
             return
         child = spawn_worker()
     capture_on.set()
@@ -115,7 +116,7 @@ def analyze_bg(msgs, title, revision, reply_to=None):
                                    jev_model=settings.jev_model() or None),
                      title, revision))
     except Exception as e:
-        results.put(("err", f"分析失败: {e}", title, revision))
+        results.put(("err", f"{T('分析失败: ')}{e}", title, revision))
 
 
 def check_update_bg():
@@ -127,10 +128,10 @@ def check_update_bg():
 
 def start_analyze(title, msgs):
     if not settings.has_jev_key():
-        ov.set_status("请先在设置中配置模型", "warning")
+        ov.set_status(T("请先在设置中配置模型"), "warning")
         return
     if not settings.has_llm_key():
-        ov.set_status(f"起草来源 {settings.draft_provider_name()} 没填密钥，去设置里补上", "warning")
+        ov.set_status(f"{T('起草来源 ')}{settings.draft_provider_name()}{T(' 没填密钥，去设置里补上')}", "warning")
         return
     state["busy"] = True
     ov.set_busy(True)
@@ -221,7 +222,7 @@ def drain():
         else:
             state["rerun"] = None
             ov.set_busy(False)
-            ov.set_status("你已回复，等待对方的新消息")
+            ov.set_status(T("你已回复，等待对方的新消息"))
 
 
 def tick():
@@ -248,7 +249,7 @@ def tick():
                     ov.set_busy(False)
             else:
                 ov.set_busy(False)
-                ov.set_status("生成失败，请检查网络和服务设置；新消息到来后会重试。", "error")
+                ov.set_status(T("生成失败，请检查网络和服务设置；新消息到来后会重试。"), "error")
                 ov.log(r)
     except Exception:
         traceback.print_exc()  # 一帧出错不退出
@@ -268,14 +269,14 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     try:
         state["hwnd"] = find_wechat_hwnd()
     except RuntimeError:
-            ov.set_capture(False, "未找到聊天窗口，打开后再开启采集")
+            ov.set_capture(False, T("未找到聊天窗口，打开后再开启采集"))
     else:
         capture_on.set()
         child = spawn_worker()
     if settings.debug_view():  # 上次开着就直接开回来
         set_debug(True)
     if not settings.has_jev_key():
-        ov.set_status("请先在设置中配置模型", "warning")
+        ov.set_status(T("请先在设置中配置模型"), "warning")
         ov.after(0, ov.open_settings)
     if settings.check_update() and update.parse_version(VERSION):  # 开发版没有版本号，不查也不烦源码用户
         threading.Thread(target=check_update_bg, daemon=True).start()

@@ -24,6 +24,7 @@ from app import settings
 from app.version import VERSION
 from core import jev_client, llm, providers
 from core.questions import CHOICE_LABELS
+from app.i18n import T
 
 _LOG_LINES = 300
 _MUTED = "#68776f"
@@ -35,7 +36,7 @@ _RELATIONSHIPS = [
 
 
 def _choice(answers, name):
-    return CHOICE_LABELS[name].get((answers.get(name) or {}).get("choice"), "暂未判断")
+    return T(CHOICE_LABELS[name].get((answers.get(name) or {}).get("choice"), "暂未判断"))
 
 
 def _mp_banner_path() -> str:
@@ -190,11 +191,11 @@ class _ReplyCard(_Surface):
         self.box = box
         box.setSpacing(10)
         top = QHBoxLayout()
-        label = "推荐回复" if recommended else f"备选 {number}"
+        label = T("推荐回复") if recommended else f"{T('备选')} {number}"
         if score is not None:
             label += f" · {round(score * 100)}%"
         top.addWidget(_label(label, 12, _GREEN if recommended else _MUTED, True))
-        self.copyButton = _tool(FIF.COPY, "复制这条回复", lambda: owner._copy(index), self)
+        self.copyButton = _tool(FIF.COPY, T("复制这条回复"), lambda: owner._copy(index), self)
         self.copyButton.setFixedSize(24, 24)
         top.addWidget(self.copyButton)
         box.addLayout(top)
@@ -203,7 +204,7 @@ class _ReplyCard(_Surface):
         box.addWidget(self.text)
         bottom = QHBoxLayout()
         bottom.addStretch(1)
-        self.fillButton = (PrimaryPushButton if recommended else PushButton)("填入", self)
+        self.fillButton = (PrimaryPushButton if recommended else PushButton)(T("填入"), self)
         self.fillButton.setAccessibleName(f"填入{'推荐回复' if recommended else f'备选 {number}'}")
         self.fillButton.clicked.connect(lambda: owner._fill(index))
         bottom.addWidget(self.fillButton)
@@ -270,17 +271,17 @@ class Overlay:
         self.subtitle.setAttribute(Qt.WA_TransparentForMouseEvents)
         title.addWidget(self.subtitle, 1)
         self.captureSwitch = SwitchButton(header)
-        self.captureSwitch.setOnText("采集中")
-        self.captureSwitch.setOffText("已暂停")
-        self.captureSwitch.setToolTip("开启或暂停采集")
-        self.captureSwitch.setAccessibleName("开启或暂停采集")
+        self.captureSwitch.setOnText(T("采集中"))
+        self.captureSwitch.setOffText(T("已暂停"))
+        self.captureSwitch.setToolTip(T("开启或暂停采集"))
+        self.captureSwitch.setAccessibleName(T("开启或暂停采集"))
         self.captureSwitch.setChecked(True)
         self.captureSwitch.checkedChanged.connect(self._capture_toggled)
         title.addWidget(self.captureSwitch)
-        self.settingsButton = _tool(FIF.SETTING, "设置", self.open_settings, header)
+        self.settingsButton = _tool(FIF.SETTING, T("设置"), self.open_settings, header)
         title.addWidget(self.settingsButton)
-        title.addWidget(_tool(FIF.REMOVE, "最小化", self.win.showMinimized, header))
-        title.addWidget(_tool(FIF.CLOSE, "关闭助手", self.win.close, header))
+        title.addWidget(_tool(FIF.REMOVE, T("最小化"), self.win.showMinimized, header))
+        title.addWidget(_tool(FIF.CLOSE, T("关闭助手"), self.win.close, header))
         outer.addWidget(header)
         self.updateBar = QWidget(self.win)
         update_row = QHBoxLayout(self.updateBar)
@@ -288,13 +289,13 @@ class Overlay:
         update_row.setSpacing(8)
         self.updateLabel = _label("", 12, _GREEN, True)
         update_row.addWidget(self.updateLabel, 1)
-        self.updateLink = HyperlinkButton("", "去下载", self.updateBar)
+        self.updateLink = HyperlinkButton("", T("去下载"), self.updateBar)
         self.updateLink.setFixedHeight(24)
         update_row.addWidget(self.updateLink)
         closeUpdate = TransparentToolButton(FIF.CLOSE, self.updateBar)
         closeUpdate.setFixedSize(20, 20)
-        closeUpdate.setToolTip("关闭更新提示")
-        closeUpdate.setAccessibleName("关闭更新提示")
+        closeUpdate.setToolTip(T("关闭更新提示"))
+        closeUpdate.setAccessibleName(T("关闭更新提示"))
         closeUpdate.clicked.connect(lambda: self.updateBar.hide())
         update_row.addWidget(closeUpdate)
         self.updateBar.setFixedHeight(32)
@@ -306,7 +307,7 @@ class Overlay:
         self._build_settings()
         footer = QHBoxLayout()
         footer.setContentsMargins(20, 9, 8, 8)
-        footer.addWidget(_label(f"仅填入输入框 · 发送由你确认 · v{VERSION}", 11, _MUTED), 1)
+        footer.addWidget(_label(f"{T('仅填入输入框 · 发送由你确认')} · v{VERSION}", 11, _MUTED), 1)
         grip = QSizeGrip(self.win)
         grip.setFixedSize(16, 16)
         footer.addWidget(grip, 0, Qt.AlignBottom)
@@ -316,7 +317,7 @@ class Overlay:
         self.win.resize(min(440, screen.width() - 32), min(820, screen.height() - 48))
         self.win.move(screen.right() - self.win.width() - 20, screen.top() + 24)
         self._relayout(self.win.width(), self.win.height())  # resizeEvent 补不到构造时这一次
-        self.set_status("等待新消息" if settings.has_key() else "需要配置模型",
+        self.set_status(T("等待新消息") if settings.has_key() else T("需要配置模型"),
                         "idle" if settings.has_key() else "warning")
         self.win.show()
 
@@ -349,8 +350,8 @@ class Overlay:
     def _apply_compact(self, compact):
         """紧凑/常规两套间距和可见性；断点没变时不会被调用。"""
         self.subtitle.setVisible(not compact)
-        self.captureSwitch.setOnText("" if compact else "采集中")
-        self.captureSwitch.setOffText("" if compact else "已暂停")
+        self.captureSwitch.setOnText("" if compact else T("采集中"))
+        self.captureSwitch.setOffText("" if compact else T("已暂停"))
         for label in self._hintLabels:
             label.setVisible(not compact)
         self.referenceNote.setVisible(bool(self.cands) and not compact)
@@ -364,20 +365,20 @@ class Overlay:
     def _build_home(self):
         self.home, body = self._scroll_page()
         heading = QHBoxLayout()
-        heading.addWidget(_label("回复建议", 23, "#24382d", True), 1)
+        heading.addWidget(_label(T("回复建议"), 23, "#24382d", True), 1)
         self.updated = _label("", 11, _MUTED)
         self.updated.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         heading.addWidget(self.updated)
         body.addLayout(heading)
         chat_row = QHBoxLayout()
         chat_row.setSpacing(8)
-        prefix = _label("当前会话", 12, _MUTED)
+        prefix = _label(T("当前会话"), 12, _MUTED)
         prefix.setFixedWidth(56)
         chat_row.addWidget(prefix)
         self.chatBox = _FitCombo()
-        self.chatBox.setPlaceholderText("尚未识别到会话")
-        self.chatBox.setAccessibleName("当前会话")
-        self.chatBox.setToolTip("聊天窗口切到哪个会话这里就跟到哪个；也可以自己选一个，只看它的记录和建议")
+        self.chatBox.setPlaceholderText(T("尚未识别到会话"))
+        self.chatBox.setAccessibleName(T("当前会话"))
+        self.chatBox.setToolTip(T("聊天窗口切到哪个会话这里就跟到哪个；也可以自己选一个，只看它的记录和建议"))
         self.chatBox.currentIndexChanged.connect(self._on_chat_selected)
         chat_row.addWidget(self.chatBox, 1)
         self.chatFollow = _label("", 11, _MUTED)
@@ -389,17 +390,17 @@ class Overlay:
         target_row = QHBoxLayout(self.targetRow)
         target_row.setContentsMargins(0, 0, 0, 0)
         target_row.setSpacing(8)
-        target_prefix = _label("回复对象", 12, _MUTED)
+        target_prefix = _label(T("回复对象"), 12, _MUTED)
         target_prefix.setFixedWidth(56)
         target_row.addWidget(target_prefix)
         self.targetBox = _FitCombo()
-        self.targetBox.setAccessibleName("回复对象")
-        self.targetBox.setToolTip("三条候选都按这个人来写；不选就跟着最近说话的那位")
+        self.targetBox.setAccessibleName(T("回复对象"))
+        self.targetBox.setToolTip(T("三条候选都按这个人来写；不选就跟着最近说话的那位"))
         self.targetBox.currentIndexChanged.connect(self._on_target_selected)
         target_row.addWidget(self.targetBox, 1)
-        self.atCheck = CheckBox("填入时带 @")
+        self.atCheck = CheckBox(T("填入时带 @"))
         self.atCheck.setChecked(True)
-        self.atCheck.setToolTip("填入时在开头加「@名字 」。只是普通文字，不会变成真正的 @")
+        self.atCheck.setToolTip(T("填入时在开头加「@名字 」。只是普通文字，不会变成真正的 @"))
         target_row.addWidget(self.atCheck)
         self.targetRow.hide()
         body.addWidget(self.targetRow)
@@ -413,7 +414,7 @@ class Overlay:
         context_box = QVBoxLayout(self.context)
         context_box.setContentsMargins(0, 0, 0, 0)
         context_box.setSpacing(5)
-        context_box.addWidget(_label("对方最近说", 11, _MUTED))
+        context_box.addWidget(_label(T("对方最近说"), 11, _MUTED))
         self.latest = _label("", 14, "#42574a")
         self.latest.setTextInteractionFlags(Qt.TextSelectableByMouse)
         context_box.addWidget(self.latest)
@@ -425,7 +426,7 @@ class Overlay:
         insight_box.setContentsMargins(14, 12, 14, 12)
         insight_box.setSpacing(7)
         row = QHBoxLayout()
-        self.insightTitle = _label("对话参考", 12, _MUTED)
+        self.insightTitle = _label(T("对话参考"), 12, _MUTED)
         row.addWidget(self.insightTitle, 1)
         self.tension = _label("", 11)
         self.tension.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -435,7 +436,7 @@ class Overlay:
         insight_box.addWidget(self.summary)
         self.intent = _label("", 12, _MUTED)
         insight_box.addWidget(self.intent)
-        self.insight.setToolTip("根据当前聊天片段推测，可能理解有偏差。紧张度为 0–9 的参考评分。")
+        self.insight.setToolTip(T("根据当前聊天片段推测，可能理解有偏差。紧张度为 0–9 的参考评分。"))
         self.insight.hide()
         body.addWidget(self.insight)
 
@@ -446,34 +447,34 @@ class Overlay:
         symbol = _label("…", 30, _GREEN, True)
         symbol.setAlignment(Qt.AlignCenter)
         empty_box.addWidget(symbol)
-        self.emptyTitle = _label("等待对方的新消息", 17, "#304c3c", True)
+        self.emptyTitle = _label(T("等待对方的新消息"), 17, "#304c3c", True)
         self.emptyTitle.setAlignment(Qt.AlignCenter)
         empty_box.addWidget(self.emptyTitle)
-        self.emptyHint = _label("保持聊天窗口打开。\n收到新消息后，回复建议会出现在这里。", 13, _MUTED)
+        self.emptyHint = _label(T("保持聊天窗口打开。\n收到新消息后，回复建议会出现在这里。"), 13, _MUTED)
         self.emptyHint.setAlignment(Qt.AlignCenter)
         empty_box.addWidget(self.emptyHint)
-        self.setupButton = PrimaryPushButton("前往设置")
+        self.setupButton = PrimaryPushButton(T("前往设置"))
         self.setupButton.clicked.connect(self.open_settings)
         self.setupButton.setVisible(not settings.has_key())
         empty_box.addWidget(self.setupButton, 0, Qt.AlignHCenter)
         if not settings.has_key():
-            self.emptyTitle.setText("先设置，再开始")
-            self.emptyHint.setText("配置模型和关系背景，\n让建议更贴近你们的对话。")
+            self.emptyTitle.setText(T("先设置，再开始"))
+            self.emptyHint.setText(T("配置模型和关系背景，\n让建议更贴近你们的对话。"))
         body.addWidget(self.empty)
         self.replyBox = QVBoxLayout()
         self.replyBox.setSpacing(10)
         body.addLayout(self.replyBox)
-        self.referenceNote = _label("AI 建议仅供参考，按你的语气调整后再发送。", 11, _MUTED)
+        self.referenceNote = _label(T("AI 建议仅供参考，按你的语气调整后再发送。"), 11, _MUTED)
         self.referenceNote.hide()
         body.addWidget(self.referenceNote)
 
-        self.historyButton = PushButton(FIF.HISTORY, "聊天记录")
+        self.historyButton = PushButton(FIF.HISTORY, T("聊天记录"))
         self.historyButton.clicked.connect(self._toggle_history)
-        self.historyButton.setAccessibleName("展开或收起聊天记录")
+        self.historyButton.setAccessibleName(T("展开或收起聊天记录"))
         body.addWidget(self.historyButton)
         self.feed = PlainTextEdit()
         self.feed.setReadOnly(True)
-        self.feed.setPlaceholderText("识别到的聊天内容会显示在这里")
+        self.feed.setPlaceholderText(T("识别到的聊天内容会显示在这里"))
         self.feed.setMaximumBlockCount(_LOG_LINES)
         self.feed.setFixedHeight(160)
         self.feed.hide()
@@ -484,83 +485,83 @@ class Overlay:
     def _build_settings(self):
         self.settingsPage, body = self._scroll_page()
         heading = QHBoxLayout()
-        heading.addWidget(_tool(FIF.RETURN, "返回回复建议", self._back_home))
-        heading.addWidget(_label("设置", 23, "#24382d", True), 1)
+        heading.addWidget(_tool(FIF.RETURN, T("返回回复建议"), self._back_home))
+        heading.addWidget(_label(T("设置"), 23, "#24382d", True), 1)
         body.addLayout(heading)
-        body.addWidget(_label("调整关系背景，配置判断和起草用的两个模型。", 13, _MUTED))
+        body.addWidget(_label(T("调整关系背景，配置判断和起草用的两个模型。"), 13, _MUTED))
         preference = _Surface()
         box = QVBoxLayout(preference)
         box.setContentsMargins(16, 16, 16, 18)
         box.setSpacing(12)
-        box.addWidget(_label("回复偏好", 16, "#304c3c", True))
-        relation_label = _label("你们的关系", 13)
+        box.addWidget(_label(T("回复偏好"), 16, "#304c3c", True))
+        relation_label = _label(T("你们的关系"), 13)
         box.addWidget(relation_label)
         self.relationshipBox = ComboBox()
         self.relationshipBox.setMinimumWidth(0)
-        self.relationshipBox.addItems([name for name, value in _RELATIONSHIPS])
-        self.relationshipBox.setAccessibleName("你们的关系")
+        self.relationshipBox.addItems([T(name) for name, value in _RELATIONSHIPS])
+        self.relationshipBox.setAccessibleName(T("你们的关系"))
         relation_label.setBuddy(self.relationshipBox)
         box.addWidget(self.relationshipBox)
         self.relEdit = LineEdit()
-        self.relEdit.setPlaceholderText("例如：刚认识的朋友，正在慢慢熟悉")
-        self.relEdit.setAccessibleName("自定义关系背景")
+        self.relEdit.setPlaceholderText(T("例如：刚认识的朋友，正在慢慢熟悉"))
+        self.relEdit.setAccessibleName(T("自定义关系背景"))
         box.addWidget(self.relEdit)
         self.relationshipBox.currentIndexChanged.connect(
             lambda index: self.relEdit.setVisible(_RELATIONSHIPS[index][1] is None)
         )
-        box.addWidget(self._hint("帮助助手把握称呼、语气和回应分寸。"))
-        style_label = _label("说话风格（可选）", 13)
+        box.addWidget(self._hint(T("帮助助手把握称呼、语气和回应分寸。")))
+        style_label = _label(T("说话风格（可选）"), 13)
         box.addWidget(style_label)
         self.styleEdit = LineEdit()
-        self.styleEdit.setPlaceholderText("例如：话少、不用标点、偶尔用 doge、不说客套话")
-        self.styleEdit.setAccessibleName("说话风格")
+        self.styleEdit.setPlaceholderText(T("例如：话少、不用标点、偶尔用 doge、不说客套话"))
+        self.styleEdit.setAccessibleName(T("说话风格"))
         style_label.setBuddy(self.styleEdit)
         box.addWidget(self.styleEdit)
-        box.addWidget(self._hint("候选本来就照着你最近发的消息模仿；这里可以再补一句你自己的口吻。"))
-        context_label = _label("参考上下文", 13)
+        box.addWidget(self._hint(T("候选本来就照着你最近发的消息模仿；这里可以再补一句你自己的口吻。")))
+        context_label = _label(T("参考上下文"), 13)
         box.addWidget(context_label)
         self.contextBox = SpinBox()
         self.contextBox.setRange(3, 30)
-        self.contextBox.setAccessibleName("参考的最近消息条数")
+        self.contextBox.setAccessibleName(T("参考的最近消息条数"))
         context_label.setBuddy(self.contextBox)
         box.addWidget(self.contextBox)
         box.addWidget(self._hint(
-            "生成和判断时看最近这么多条消息。太少会丢上下文，太多会稀释重点，建议 6–12。"
+            T("生成和判断时看最近这么多条消息。太少会丢上下文，太多会稀释重点，建议 6–12。")
         ))
         target_row = QHBoxLayout()
-        target_row.addWidget(_label("群聊指定回复对象", 13), 1)
+        target_row.addWidget(_label(T("群聊指定回复对象"), 13), 1)
         self.targetSwitch = SwitchButton()
-        self.targetSwitch.setOnText("开")
-        self.targetSwitch.setOffText("关")
-        self.targetSwitch.setAccessibleName("群聊指定回复对象")
+        self.targetSwitch.setOnText(T("开"))
+        self.targetSwitch.setOffText(T("关"))
+        self.targetSwitch.setAccessibleName(T("群聊指定回复对象"))
         target_row.addWidget(self.targetSwitch)
         box.addLayout(target_row)
         box.addWidget(self._hint(
-            "开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。"
+            T("开了以后群聊里可以选回复给谁，候选会针对 TA 写，填入时可带 @。关了就正常回复。")
         ))
         update_row = QHBoxLayout()
-        update_row.addWidget(_label("启动时检查更新", 13), 1)
+        update_row.addWidget(_label(T("启动时检查更新"), 13), 1)
         self.updateSwitch = SwitchButton()
-        self.updateSwitch.setOnText("开")
-        self.updateSwitch.setOffText("关")
-        self.updateSwitch.setAccessibleName("启动时检查更新")
+        self.updateSwitch.setOnText(T("开"))
+        self.updateSwitch.setOffText(T("关"))
+        self.updateSwitch.setAccessibleName(T("启动时检查更新"))
         update_row.addWidget(self.updateSwitch)
         box.addLayout(update_row)
         box.addWidget(self._hint(
-            "只向 GitHub 查最新版本号，不发送任何数据。国内访问 GitHub 慢的话关掉也行。"
+            T("只向 GitHub 查最新版本号，不发送任何数据。国内访问 GitHub 慢的话关掉也行。")
         ))
         debug_row = QHBoxLayout()
-        debug_row.addWidget(_label("调试视图", 13), 1)
+        debug_row.addWidget(_label(T("调试视图"), 13), 1)
         self.debugSwitch = SwitchButton()
-        self.debugSwitch.setOnText("开")
-        self.debugSwitch.setOffText("关")
-        self.debugSwitch.setAccessibleName("调试视图")
+        self.debugSwitch.setOnText(T("开"))
+        self.debugSwitch.setOffText(T("关"))
+        self.debugSwitch.setAccessibleName(T("调试视图"))
         self.debugSwitch.checkedChanged.connect(self._debug_toggled)  # 这个开关立刻生效，不等「保存设置」
         debug_row.addWidget(self.debugSwitch)
         box.addLayout(debug_row)
         box.addWidget(self._hint(
-            "另开一个窗口实时显示截到的画面和识别框：绿 = 我、蓝 = 对方、灰 = 过滤掉的灰字、"
-            "红 = 当成图片丢掉、黄 = 小字丢掉。只在内存里画，不存图。"
+            T("另开一个窗口实时显示截到的画面和识别框：绿 = 我、蓝 = 对方、灰 = 过滤掉的灰字、"
+            "红 = 当成图片丢掉、黄 = 小字丢掉。只在内存里画，不存图。")
         ))
         body.addWidget(preference)
 
@@ -568,24 +569,24 @@ class Overlay:
         box = QVBoxLayout(models)
         box.setContentsMargins(16, 16, 16, 18)
         box.setSpacing(12)
-        box.addWidget(_label("模型", 16, "#304c3c", True))
+        box.addWidget(_label(T("模型"), 16, "#304c3c", True))
         self._fetched = _Fetched()
         self._fetched.done.connect(self._models_fetched)
-        self.jev = self._model_group(box, "判断 · Jev", "jev", providers.JEV_PROVIDERS)
+        self.jev = self._model_group(box, T("判断 · Jev"), "jev", providers.JEV_PROVIDERS)
         box.addWidget(self._hint(
-            "判断意图、紧张度，并给三条候选排序。两家给的是同一个 Jev，必填。"
+            T("判断意图、紧张度，并给三条候选排序。两家给的是同一个 Jev，必填。")
         ))
-        self.draft = self._model_group(box, "起草 · 语言模型", "draft", providers.DRAFT_PROVIDERS)
+        self.draft = self._model_group(box, T("起草 · 语言模型"), "draft", providers.DRAFT_PROVIDERS)
         box.addWidget(self._hint(
-            "写那三条候选。OpenAI / Anthropic / Gemini 三种接口都走各自官方 SDK。"
-            "默认 DeepSeek 官网直连，国内最快。"
+            T("写那三条候选。OpenAI / Anthropic / Gemini 三种接口都走各自官方 SDK。"
+            "默认 DeepSeek 官网直连，国内最快。")
         ))
         think_row = QHBoxLayout()
-        think_row.addWidget(_label("起草时开启思考模式", 13), 1)
+        think_row.addWidget(_label(T("起草时开启思考模式"), 13), 1)
         self.thinkingSwitch = SwitchButton()
-        self.thinkingSwitch.setOnText("开")
-        self.thinkingSwitch.setOffText("关")
-        self.thinkingSwitch.setAccessibleName("起草时开启思考模式")
+        self.thinkingSwitch.setOnText(T("开"))
+        self.thinkingSwitch.setOffText(T("关"))
+        self.thinkingSwitch.setAccessibleName(T("起草时开启思考模式"))
         think_row.addWidget(self.thinkingSwitch)
         box.addLayout(think_row)
         box.addWidget(self._hint(
@@ -597,15 +598,15 @@ class Overlay:
         self.settingsFeedback.hide()
         body.addWidget(self.settingsFeedback)
         actions = QHBoxLayout()
-        back = PushButton("返回")
+        back = PushButton(T("返回"))
         back.clicked.connect(self._back_home)
         actions.addWidget(back)
         actions.addStretch(1)
-        self.saveButton = PrimaryPushButton("保存设置")
+        self.saveButton = PrimaryPushButton(T("保存设置"))
         self.saveButton.clicked.connect(self._save)
         actions.addWidget(self.saveButton)
         body.addLayout(actions)
-        body.addWidget(self._hint("保存后用于下一次生成的回复。"))
+        body.addWidget(self._hint(T("保存后用于下一次生成的回复。")))
         banner = _mp_banner_path()
         if os.path.exists(banner):
             body.addWidget(_MpBanner(banner))
@@ -630,7 +631,7 @@ class Overlay:
         group.keyState.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         heading.addWidget(group.keyState)
         box.addLayout(heading)
-        source_label = _label("来源", 13)
+        source_label = _label(T("来源"), 13)
         box.addWidget(source_label)
         group.providerBox = ComboBox()
         group.providerBox.setMinimumWidth(0)  # 选项文字长短不一，别让它撑开设置页
@@ -642,11 +643,11 @@ class Overlay:
             self.baseLabel = _label("Base URL", 13)
             box.addWidget(self.baseLabel)
             self.baseEdit = LineEdit()
-            self.baseEdit.setPlaceholderText("https://你的服务/v1")
-            self.baseEdit.setAccessibleName("自定义来源 Base URL")
+            self.baseEdit.setPlaceholderText(T("https://你的服务/v1"))
+            self.baseEdit.setAccessibleName(T("自定义来源 Base URL"))
             self.baseLabel.setBuddy(self.baseEdit)
             box.addWidget(self.baseEdit)
-        key_label = _label("密钥", 13)
+        key_label = _label(T("密钥"), 13)
         box.addWidget(key_label)
         group.keyEdit = PasswordLineEdit()
         group.keyEdit.setAccessibleName(f"{title} API 密钥")
@@ -656,7 +657,7 @@ class Overlay:
         box.addWidget(self._hint(
             "OpenRouter 的 key 或 TypeSafe 的 key，看上面选的来源。" if kind == "jev"
             else "上面选哪家就填哪家的 key；换来源重填一次，只存这一把。"))
-        model_label = _label("模型", 13)
+        model_label = _label(T("模型"), 13)
         box.addWidget(model_label)
         row = QHBoxLayout()
         row.setSpacing(8)
@@ -665,7 +666,7 @@ class Overlay:
         group.modelBox.setAccessibleName(f"{title} 模型")
         model_label.setBuddy(group.modelBox)
         row.addWidget(group.modelBox, 1)
-        group.fetchButton = PushButton("获取模型")
+        group.fetchButton = PushButton(T("获取模型"))
         group.fetchButton.setAccessibleName(f"获取{title}的可用模型列表")
         group.fetchButton.clicked.connect(lambda: self._fetch_models(group))
         row.addWidget(group.fetchButton)
@@ -714,12 +715,12 @@ class Overlay:
         base = self.baseEdit.text().strip() if custom else None
         key = group.keyEdit.text().strip() or group.stored_key()
         if not key:
-            group.status.setText("先填密钥")
+            group.status.setText(T("先填密钥"))
             return
         if custom and not base:
-            group.status.setText("先填 Base URL")
+            group.status.setText(T("先填 Base URL"))
             return
-        group.status.setText("获取中…")
+        group.status.setText(T("获取中…"))
         group.fetchButton.setEnabled(False)
         threading.Thread(target=lambda: self._list_models(group, provider, key, base),
                          daemon=True).start()
@@ -790,11 +791,11 @@ class Overlay:
         draft_provider = self._provider_of(self.draft)
         base = self.baseEdit.text().strip()
         if not relationship:
-            self._settings_feedback("请填写关系背景，或选择一个已有选项。", error=True)
+            self._settings_feedback(T("请填写关系背景，或选择一个已有选项。"), error=True)
             self.relEdit.setFocus()
             return
         if draft_provider in providers.CUSTOM and not base:
-            self._settings_feedback("自定义来源要填 Base URL。", error=True)
+            self._settings_feedback(T("自定义来源要填 Base URL。"), error=True)
             self.baseEdit.setFocus()
             return
         for group, provider in ((self.jev, jev_provider), (self.draft, draft_provider)):
@@ -821,15 +822,15 @@ class Overlay:
                           thinking_on=self.thinkingSwitch.isChecked(),
                           check_update_on=self.updateSwitch.isChecked())
         except Exception:
-            self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)
+            self._settings_feedback(T("保存失败，请检查配置文件是否可写后重试。"), error=True)
             return
         self._load_settings()
         self._render_targets()  # 开关刚改过，回到首页时这一行该显该藏得重算一次
-        self._settings_feedback("设置已保存，将用于下一次回复。")
+        self._settings_feedback(T("设置已保存，将用于下一次回复。"))
         self.setupButton.hide()
         if not self.cands and not self._busy:
             self._empty_text()
-            self.set_status("设置已就绪，等待新消息", "idle")
+            self.set_status(T("设置已就绪，等待新消息"), "idle")
 
     def _debug_toggled(self, on):
         """调试视图独立于「保存设置」：拨一下就开窗/收窗，顺手落盘，重启还在。"""
@@ -871,17 +872,17 @@ class Overlay:
         except Exception as e:
             # 状态栏保持友好文案；真实原因和压缩堆栈进聊天记录，认得出是哪一步炸的
             import traceback
-            self.set_status("未能填入，请确认聊天窗口可用后重试，或复制回复。", "error")
+            self.set_status(T("未能填入，请确认聊天窗口可用后重试，或复制回复。"), "error")
             self.log(f"[填入失败] {type(e).__name__}: {e}")
             self.log(f"[填入失败堆栈] {' '.join(traceback.format_exc().split())[:300]}")
             return
-        self.set_status("已尝试填入，请确认内容后发送。", "success")
+        self.set_status(T("已尝试填入，请确认内容后发送。"), "success")
 
     def _copy(self, index):
         if self._busy or not self._current or index >= len(self.cands):
             return
         self.app.clipboard().setText(self.cands[index])
-        self.set_status("回复已复制，可粘贴并修改。", "success")
+        self.set_status(T("回复已复制，可粘贴并修改。"), "success")
 
     def _capture_toggled(self, on):
         """用户自己拨的开关：界面先改，再通知父进程去开/停采集。"""
@@ -908,14 +909,14 @@ class Overlay:
         if not on:
             self.set_status(reason or "采集已暂停，聊天内容不再读取", "warning")
         elif configured:
-            self.set_status("等待新消息", "idle")
+            self.set_status(T("等待新消息"), "idle")
         else:
-            self.set_status("请先在设置中配置模型", "warning")
+            self.set_status(T("请先在设置中配置模型"), "warning")
         if self._busy or self.cands:  # 正在生成或已有候选时，空态卡片本来就看不见
             return
         if not on:
-            self.emptyTitle.setText("采集已暂停")
-            self.emptyHint.setText("聊天内容暂时不再读取。\n打开标题栏的开关，继续接收新消息。")
+            self.emptyTitle.setText(T("采集已暂停"))
+            self.emptyHint.setText(T("聊天内容暂时不再读取。\n打开标题栏的开关，继续接收新消息。"))
             self.setupButton.setVisible(not configured)
         else:
             self._empty_text()
@@ -926,10 +927,10 @@ class Overlay:
         if busy:
             self.invalidate_replies()
             self.progress.start()
-            self.set_status("正在根据新消息整理回复…", "busy")
+            self.set_status(T("正在根据新消息整理回复…"), "busy")
             if not self.cands:
-                self.emptyTitle.setText("正在想一句合适的回复")
-                self.emptyHint.setText("正在结合上下文生成建议，稍等一下。")
+                self.emptyTitle.setText(T("正在想一句合适的回复"))
+                self.emptyHint.setText(T("正在结合上下文生成建议，稍等一下。"))
                 self.setupButton.hide()
         else:
             self.progress.stop()
@@ -949,7 +950,7 @@ class Overlay:
     def invalidate_replies(self):
         self._current = False
         if self.cands:
-            self.updated.setText("上次建议")
+            self.updated.setText(T("上次建议"))
         for card in self.cards:
             card.set_available(False)
 
@@ -963,8 +964,8 @@ class Overlay:
         if kind == "error" and self._busy:
             self.set_busy(False)
         if kind == "error" and not self.cands:
-            self.emptyTitle.setText("暂时没有可用的回复")
-            self.emptyHint.setText("请按上方提示处理。收到新的对方消息后会再次尝试。")
+            self.emptyTitle.setText(T("暂时没有可用的回复"))
+            self.emptyHint.setText(T("请按上方提示处理。收到新的对方消息后会再次尝试。"))
             self.setupButton.setVisible(not settings.has_key())
 
     def _toggle_history(self):
@@ -972,7 +973,7 @@ class Overlay:
         self._history_title()
 
     def _history_title(self):
-        action = "展开" if self.feed.isHidden() else "收起"
+        action = T("展开") if self.feed.isHidden() else T("收起")
         count = self.counts.get(self._shown, 0)
         self.historyButton.setText(f"{action}聊天记录" + (f" · {count}" if count else ""))
 
@@ -987,7 +988,7 @@ class Overlay:
     def log_message(self, who, text, name="", timestamp=None, chat=None):
         """按会话存一份；只有正在看的那个会往显示区里写。"""
         chat = chat or self._shown
-        speaker = (name or "对方") if who == "her" else "我"
+        speaker = (name or T("对方")) if who == "her" else T("我")
         timestamp = timestamp or datetime.now().strftime("%H:%M")
         self.counts[chat] = self.counts.get(chat, 0) + 1
         lines = self.feeds.setdefault(chat, [])
@@ -1133,12 +1134,12 @@ class Overlay:
         reply_to = result.get("reply_to")
         self.insightTitle.setText(f"对话参考 · 回复给 {reply_to}" if reply_to else "对话参考")
         answers = result.get("answers") or {}
-        self.summary.setText("建议：" + _choice(answers, "best_action"))
-        self.intent.setText("可能意图 · " + _choice(answers, "true_intent") +
-                            "\n可能需要 · " + _choice(answers, "she_needs"))
+        self.summary.setText(T("建议：") + _choice(answers, "best_action"))
+        self.intent.setText(T("可能意图 · ") + _choice(answers, "true_intent") +
+                            "\n" + T("可能需要 · ") + _choice(answers, "she_needs"))
         score = (answers.get("danger_level") or {}).get("score")
         valid_score = isinstance(score, (int, float)) and isfinite(score) and 0 <= score <= 9
-        self.tension.setText(f"紧张度 {score:.0f}/9" if valid_score else "紧张度待判断")
+        self.tension.setText(f"{T('紧张度')} {score:.0f}/9" if valid_score else T("紧张度待判断"))
         color = "#996819" if valid_score and score >= 3 else _MUTED
         if valid_score and score >= 6:
             color = "#b44832"
@@ -1149,9 +1150,9 @@ class Overlay:
         self.referenceNote.setVisible(bool(self.cands) and not self._compact)
         self.updated.setText(datetime.now().strftime("%H:%M") + " 更新")
         if self.cands:
-            self.set_status("建议已更新，选一句适合你的回复", "success")
+            self.set_status(T("建议已更新，选一句适合你的回复"), "success")
         else:
-            self.set_status("未生成可用回复，请等待下一条新消息。", "error")
+            self.set_status(T("未生成可用回复，请等待下一条新消息。"), "error")
 
     def _clear_cards(self):
         for card in self.cards:

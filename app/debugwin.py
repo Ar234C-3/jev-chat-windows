@@ -7,6 +7,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetricsF, QImage, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import PlainTextEdit
+from app.i18n import T
 
 # (kind, 画框的色, 色的中文, 这类是什么)：跟设置页那条提示一个口径
 _KINDS = (("me", "#18794e", "绿", "我"), ("her", "#1f6fd0", "蓝", "对方"),
@@ -32,7 +33,7 @@ class _Canvas(QWidget):
         p.fillRect(self.rect(), QColor("#1b1f1d"))
         if self.img is None:
             p.setPen(QColor("#9aa6a0"))
-            p.drawText(self.rect(), Qt.AlignCenter, "等待画面…\n开着采集，聊天窗口有动静就会有帧")
+            p.drawText(self.rect(), Qt.AlignCenter, T("等待画面…\n开着采集，聊天窗口有动静就会有帧"))
             return
         # 等比铺满 + 居中；s 是「缩小后的帧 → 控件」的倍率，k 是子进程缩了多少
         s = min(self.width() / self.img.width(), self.height() / self.img.height())
@@ -45,7 +46,7 @@ class _Canvas(QWidget):
         area = self.pkt.get("area")
         if not area:
             p.setPen(QColor("#d0342c"))
-            p.drawText(QRectF(ox, oy, w, 30), Qt.AlignCenter, "认不出消息区")
+            p.drawText(QRectF(ox, oy, w, 30), Qt.AlignCenter, T("认不出消息区"))
             return
         x0, y0, x1, y1 = area
         p.setPen(QPen(QColor(_HEAD), 1))
@@ -75,7 +76,7 @@ class DebugWindow(QWidget):
     def __init__(self, on_close=None):
         super().__init__()
         self.on_close = on_close
-        self.setWindowTitle("识别调试")
+        self.setWindowTitle(T("识别调试"))
         self.setWindowFlags(Qt.Tool)
         self.resize(900, 650)
         outer = QVBoxLayout(self)
