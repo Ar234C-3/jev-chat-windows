@@ -97,6 +97,9 @@ class Reader:
     def read(self, chat, pane_bg):
         """→ [(who, name, text, y)]，同一气泡的多行已合并。who ∈ me/her；name 群聊里是发言人，单聊 None。
         顺带把每个框的分类记进 self.last_boxes（调试视图画框用，几十个 tuple，不开也不亏）。"""
+        skip = self.app.trim_top(chat)   # 群聊置顶公告等：不是消息，整块跳过
+        if skip:
+            chat = chat[skip:]
         t0 = time.perf_counter()
         res, _ = self.ocr(chat, use_cls=False)
         self.last_ms = int((time.perf_counter() - t0) * 1000)

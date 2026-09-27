@@ -23,6 +23,18 @@ def _kakao_me(bg: np.ndarray) -> bool:
     return bool(bg[0] > 200 and bg[1] > 180 and bg[2] < 120)
 
 
+def _kakao_notice_rows(chat: np.ndarray) -> int:
+    """KakaoTalk 群聊置顶公告：一张几乎铺满面板宽度的白卡片，贴在消息区顶上。
+    气泡最宽也就六七成宽，所以「整行白色占宽度 80% 以上」只会是公告卡。
+    返回要跳过的行数（没有公告就是 0）。实测：群聊 115~146 和 167~230 行命中，单聊一行都没有。"""
+    top = int(chat.shape[0] * 0.35)   # 只在顶部找：底下再宽的白也不是公告
+    white = (np.abs(chat[:top].astype(int) - 255).sum(axis=2) < 30).mean(axis=1)
+    rows = np.flatnonzero(white > 0.8)
+    if rows.size == 0 or rows[0] > chat.shape[0] * 0.2:
+        return 0
+    return int(rows[-1]) + 1
+
+
 @dataclass(frozen=True)
 class ChatApp:
     key: str
@@ -33,6 +45,7 @@ class ChatApp:
     ocr: str                     # "rapidocr" (zh/en) or "windows" (Windows.Media.Ocr, ko/ja/...)
     join: str                    # how OCR fragments inside one bubble are glued
     is_me: Callable[[np.ndarray], bool]
+    trim_top: Callable[[np.ndarray], int] = lambda chat: 0  # rows to skip (pinned notice, ...)
 
 
 WECHAT = ChatApp("wechat", "微信", ("weixin.exe", "wechat.exe"), "微信", (),
@@ -40,7 +53,7 @@ WECHAT = ChatApp("wechat", "微信", ("weixin.exe", "wechat.exe"), "微信", (),
 # KakaoTalk opens one window per conversation, so the roster ("카카오톡") is never the target;
 # the biggest remaining window is the chat that is actually being read.
 KAKAOTALK = ChatApp("kakaotalk", "카카오톡", ("kakaotalk.exe",), "", ("카카오톡", ""),
-                    "windows", " ", _kakao_me)
+                    "windows", " ", _kakao_me, _kakao_notice_rows)
 
 APPS = {a.key: a for a in (WECHAT, KAKAOTALK)}
 DEFAULT = WECHAT
@@ -62,4 +75,11 @@ if __name__ == "__main__":  # 自测：颜色规则用实测像素锁住，改�
     assert not KAKAOTALK.is_me(np.array(kakao_other))
     assert not KAKAOTALK.is_me(np.array(kakao_ground))
     assert WECHAT.is_me(np.array((149, 236, 105))) and not WECHAT.is_me(np.array(kakao_bubble))
+    pane = np.full((400, 300, 3), kakao_ground, np.uint8)
+    assert KAKAOTALK.trim_top(pane) == 0 and WECHAT.trim_top(pane) == 0   # 공고 없는 화면
+    pane[20:60] = 255                      # 폭을 꽉 채운 흰 카드 = 공지
+    assert KAKAOTALK.trim_top(pane) == 60
+    pane2 = np.full((400, 300, 3), kakao_ground, np.uint8)
+    pane2[20:60, :150] = 255               # 반만 채운 흰색 = 그냥 기포
+    assert KAKAOTALK.trim_top(pane2) == 0
     print("chatapps ok")
