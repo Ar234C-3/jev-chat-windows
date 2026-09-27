@@ -11,6 +11,7 @@ typesafe-sdk                  # Jev judging over TypeSafe direct (api.typesafe.a
 anthropic                     # Anthropic Messages
 google-genai                  # Google Gemini
 
+winsdk                        # Windows.Media.Ocr: the ko/ja recognizers RapidOCR's zh/en models lack
+
 # optional, only for the two old UIA probes (already disproved; install to reproduce)
 # uiautomation                # probe_win.py / probe_win2.py
-# winsdk                      # probe_notify.py

@@ -14,7 +14,7 @@ import traceback
 from collections import deque
 
 from app import settings, update, worker
-from app.capture import find_wechat_hwnd
+from app.capture import find_chat_hwnd
 from app.fill import fill
 from app.overlay import Overlay
 from app.version import VERSION
@@ -58,7 +58,8 @@ def fill_reply(text):
 def spawn_worker():
     """开一个采集子进程，它跟着 capture_on 走：置位=采集，清掉=暂停。"""
     p = multiprocessing.Process(target=worker.run,
-                                args=(q, state["hwnd"], capture_on, debug_on), daemon=True)
+                                args=(q, state["hwnd"], capture_on, debug_on, state.get("app")),
+                                daemon=True)
     p.start()
     return p
 
@@ -94,7 +95,8 @@ def on_toggle_capture(on):
         return
     if child is None:
         try:
-            state["hwnd"] = find_wechat_hwnd()
+            state["hwnd"], found = find_chat_hwnd()
+            state["app"] = found.key
         except RuntimeError:
             ov.set_capture(False, "未找到聊天窗口，打开后再开启采集")
             return
@@ -266,7 +268,8 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
                  result_of=lambda t: chats.get(t, {}).get("result"))
     child = dbg = None
     try:
-        state["hwnd"] = find_wechat_hwnd()
+        state["hwnd"], found = find_chat_hwnd()
+        state["app"] = found.key
     except RuntimeError:
             ov.set_capture(False, "未找到聊天窗口，打开后再开启采集")
     else:
