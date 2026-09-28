@@ -24,7 +24,7 @@ from app import settings
 from app.version import VERSION
 from core import jev_client, llm, providers
 from core.questions import CHOICE_LABELS
-from app.i18n import T
+from app.i18n import LANGUAGES, T
 
 _LOG_LINES = 300
 _MUTED = "#68776f"
@@ -488,6 +488,31 @@ class Overlay:
         heading.addWidget(_tool(FIF.RETURN, T("返回回复建议"), self._back_home))
         heading.addWidget(_label(T("设置"), 23, "#24382d", True), 1)
         body.addLayout(heading)
+        banner = _mp_banner_path()
+        if os.path.exists(banner):
+            body.addWidget(_MpBanner(banner))
+
+        language = _Surface()
+        box = QVBoxLayout(language)
+        box.setContentsMargins(16, 16, 16, 18)
+        box.setSpacing(12)
+        language_label = _label(T("界面语言 / Language"), 16, "#304c3c", True)
+        box.addWidget(language_label)
+        self.languageBox = ComboBox()
+        self.languageBox.setMinimumWidth(0)
+        self.languageBox.addItems([name for name, code in LANGUAGES])
+        self.languageBox.setAccessibleName(T("界面语言 / Language"))
+        language_label.setBuddy(self.languageBox)
+        self.languageBox.currentIndexChanged.connect(self._language_changed)
+        box.addWidget(self.languageBox)
+        self.languageHint = _label("", 12, _MUTED)
+        box.addWidget(self.languageHint)
+        self.languageOverrideHint = _label(T(
+            "当前启动由 JEVCHAT_LANG 指定语言。取消该环境变量后，此处选择才会生效。"
+        ), 12, _MUTED)
+        box.addWidget(self.languageOverrideHint)
+        body.addWidget(language)
+
         body.addWidget(_label(T("调整关系背景，配置判断和起草用的两个模型。"), 13, _MUTED))
         preference = _Surface()
         box = QVBoxLayout(preference)
@@ -607,9 +632,6 @@ class Overlay:
         actions.addWidget(self.saveButton)
         body.addLayout(actions)
         body.addWidget(self._hint(T("保存后用于下一次生成的回复。")))
-        banner = _mp_banner_path()
-        if os.path.exists(banner):
-            body.addWidget(_MpBanner(banner))
         body.addStretch(1)
         self._load_settings()
 
@@ -765,7 +787,28 @@ class Overlay:
         group.modelBox.setText(model)
         group.status.setText("")
 
+    def _load_language(self):
+        lang = settings.language()
+        index = next((i for i, (_, code) in enumerate(LANGUAGES) if code == lang), 0)
+        self.languageBox.blockSignals(True)
+        self.languageBox.setCurrentIndex(index)
+        self.languageBox.blockSignals(False)
+        self.languageHint.setText(T("选择后自动保存，重启程序后生效。"))
+        self.languageOverrideHint.setVisible(bool(os.environ.get("JEVCHAT_LANG", "").strip()))
+
+    def _language_changed(self, index):
+        if not 0 <= index < len(LANGUAGES):
+            return
+        try:
+            settings.save(lang_text=LANGUAGES[index][1])
+        except Exception:
+            self._load_language()
+            self.languageHint.setText(T("语言保存失败，请检查配置文件是否可写后重试。"))
+            return
+        self.languageHint.setText(T("语言已保存，重启程序后生效。"))
+
     def _load_settings(self):
+        self._load_language()
         relationship = settings.relationship()
         index = next((i for i, (_, value) in enumerate(_RELATIONSHIPS) if value == relationship),
                      len(_RELATIONSHIPS) - 1)
@@ -856,7 +899,8 @@ class Overlay:
             self._load_settings()
         self.pages.setCurrentWidget(self.settingsPage)
         self.settingsButton.setEnabled(False)
-        (self.relationshipBox if settings.has_key() else self.jev.keyEdit).setFocus()
+        self.languageBox.setFocus()
+        self.settingsPage.verticalScrollBar().setValue(0)
 
     def _back_home(self):
         self.jev.keyEdit.clear()
