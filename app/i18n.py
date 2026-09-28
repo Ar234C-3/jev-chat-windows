@@ -8,11 +8,9 @@
 """
 from __future__ import annotations
 
-import json
 import os
-from pathlib import Path
 
-_CONFIG = Path(__file__).resolve().parent.parent / "config.json"
+from app import settings
 
 KO = {
     # 标题栏 / 采集开关
@@ -206,7 +204,7 @@ def _lang() -> str:
     if env:
         return env
     try:
-        return str(json.loads(_CONFIG.read_text(encoding="utf-8")).get("lang") or "zh").lower()
+        return str(settings._read("lang") or "zh").lower()
     except Exception:
         return "zh"
 
