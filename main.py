@@ -87,6 +87,12 @@ def on_debug_closed():
     settings.save(debug_view_on=False)
 
 
+def on_language_changed():
+    """主界面切换语言后，同步刷新已经打开过的调试窗。"""
+    if dbg is not None:
+        dbg.retranslate()
+
+
 def on_toggle_capture(on):
     """标题栏开关。启动时没找到微信就没有子进程，这会儿再找一次，找到了才真开得起来。"""
     global child
@@ -97,7 +103,7 @@ def on_toggle_capture(on):
         try:
             state["hwnd"] = find_wechat_hwnd()
         except RuntimeError:
-            ov.set_capture(False, T("未找到聊天窗口，打开后再开启采集"))
+            ov.set_capture(False, "未找到聊天窗口，打开后再开启采集")
             return
         child = spawn_worker()
     capture_on.set()
@@ -128,10 +134,11 @@ def check_update_bg():
 
 def start_analyze(title, msgs):
     if not settings.has_jev_key():
-        ov.set_status(T("请先在设置中配置模型"), "warning")
+        ov.set_status("请先在设置中配置模型", "warning")
         return
     if not settings.has_llm_key():
-        ov.set_status(f"{T('起草来源 ')}{settings.draft_provider_name()}{T(' 没填密钥，去设置里补上')}", "warning")
+        ov.set_status(lambda name=settings.draft_provider_name():
+                      f"{T('起草来源 ')}{name}{T(' 没填密钥，去设置里补上')}", "warning")
         return
     state["busy"] = True
     ov.set_busy(True)
@@ -222,7 +229,7 @@ def drain():
         else:
             state["rerun"] = None
             ov.set_busy(False)
-            ov.set_status(T("你已回复，等待对方的新消息"))
+            ov.set_status("你已回复，等待对方的新消息")
 
 
 def tick():
@@ -249,7 +256,7 @@ def tick():
                     ov.set_busy(False)
             else:
                 ov.set_busy(False)
-                ov.set_status(T("生成失败，请检查网络和服务设置；新消息到来后会重试。"), "error")
+                ov.set_status("生成失败，请检查网络和服务设置；新消息到来后会重试。", "error")
                 ov.log(r)
     except Exception:
         traceback.print_exc()  # 一帧出错不退出
@@ -262,21 +269,22 @@ if __name__ == "__main__":  # Windows 的 spawn 会让子进程重新执行本�
     q = multiprocessing.Queue()
     capture_on = multiprocessing.Event()  # 父子进程共用的开关，置位=采集
     debug_on = multiprocessing.Event()  # 同上，置位=子进程往队列里送整帧给调试窗
+    child = dbg = None
     ov = Overlay(on_fill=fill_reply, on_toggle_capture=on_toggle_capture,
                  on_target_change=on_target_change, on_toggle_debug=set_debug,
+                 on_language_changed=on_language_changed,
                  result_of=lambda t: chats.get(t, {}).get("result"))
-    child = dbg = None
     try:
         state["hwnd"] = find_wechat_hwnd()
     except RuntimeError:
-            ov.set_capture(False, T("未找到聊天窗口，打开后再开启采集"))
+        ov.set_capture(False, "未找到聊天窗口，打开后再开启采集")
     else:
         capture_on.set()
         child = spawn_worker()
     if settings.debug_view():  # 上次开着就直接开回来
         set_debug(True)
     if not settings.has_jev_key():
-        ov.set_status(T("请先在设置中配置模型"), "warning")
+        ov.set_status("请先在设置中配置模型", "warning")
         ov.after(0, ov.open_settings)
     if settings.check_update() and update.parse_version(VERSION):  # 开发版没有版本号，不查也不烦源码用户
         threading.Thread(target=check_update_bg, daemon=True).start()
