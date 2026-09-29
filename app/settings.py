@@ -89,6 +89,10 @@ def thinking() -> bool:
     """起草时是否开思考模式：慢且贵，默认关。只有 DeepSeek / OpenRouter / Anthropic / Gemini 吃它。"""
     return bool(_read("thinking", False))
 
+def self_rank() -> bool:
+    """排序由起草模型自评（方案②，默认开）：省一次独立排序调用；关了走原版三段式的独立排序。"""
+    return bool(_read("self_rank", True))
+
 def check_update() -> bool:
     """启动时要不要去 GitHub 查一次最新版本号：默认开，只出这一次网，设置里能关。"""
     return bool(_read("check_update", True))
@@ -163,6 +167,7 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
          llm_key_text: str | None = None, draft_model_text: str | None = None,
          draft_base_url_text: str | None = None, reply_target_on: bool | None = None,
          style_text: str | None = None, thinking_on: bool | None = None,
+         self_rank_on: bool | None = None,
          check_update_on: bool | None = None, debug_view_on: bool | None = None,
          lang_text: str | None = None) -> None:
     """每个参数为空/None = 保留当前值。两把 key 写进程环境 + HKCU\\Environment，不写任何文件。"""
@@ -193,6 +198,7 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
         "draft_base_url": keep(draft_base_url_text, "draft_base_url"),
         "reply_target": flag(reply_target_on, reply_target),
         "thinking": flag(thinking_on, thinking),
+        "self_rank": flag(self_rank_on, self_rank),
         "check_update": flag(check_update_on, check_update),
         "debug_view": flag(debug_view_on, debug_view),
     }

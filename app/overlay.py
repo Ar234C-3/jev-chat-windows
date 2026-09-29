@@ -640,6 +640,18 @@ class Overlay:
             lambda: T("关：秒回，够用。开：模型先想再写，更斟酌但慢好几倍、贵一些。只有 {providers} 认这个开关。")
             .format(providers=" / ".join(providers.THINKING))
         ))
+        rank_row = QHBoxLayout()
+        rank_row.addWidget(_tlabel("排序由起草模型自评", 13), 1)
+        self.selfRankSwitch = SwitchButton()
+        bind(self.selfRankSwitch, "开", "setOnText")
+        bind(self.selfRankSwitch, "关", "setOffText")
+        bind(self.selfRankSwitch, "排序由起草模型自评", "setAccessibleName")
+        rank_row.addWidget(self.selfRankSwitch)
+        box.addLayout(rank_row)
+        box.addWidget(self._hint(
+            "开：起草完顺带自评哪条最合适，省掉一次独立排序调用（实测 5~9 秒）；"
+            "关：原版三段式，判断源单独排序一次。自评分数不可用时会自动退回独立排序。"
+        ))
         body.addWidget(models)
         self.settingsFeedback = _label("", 13, _GREEN)
         self.settingsFeedback.hide()
@@ -860,6 +872,7 @@ class Overlay:
         self.jev.baseEdit.setText(settings.jev_base_url())
         self.draft.baseEdit.setText(settings.draft_base_url())
         self.thinkingSwitch.setChecked(settings.thinking())
+        self.selfRankSwitch.setChecked(settings.self_rank())
         self.updateSwitch.setChecked(settings.check_update())
         self.set_debug_switch(settings.debug_view())  # 屏蔽信号地拨，别在加载时开关一遍窗口
         self._sync_model_fields()  # 上面屏蔽了信号，这里补一次
@@ -904,6 +917,7 @@ class Overlay:
                           reply_target_on=self.targetSwitch.isChecked(),
                           style_text=self.styleEdit.text().strip(),
                           thinking_on=self.thinkingSwitch.isChecked(),
+                          self_rank_on=self.selfRankSwitch.isChecked(),
                           check_update_on=self.updateSwitch.isChecked())
         except Exception:
             self._settings_feedback("保存失败，请检查配置文件是否可写后重试。", error=True)

@@ -128,6 +128,7 @@ def analyze_bg(msgs, title, revision, reply_to=None):
                                    jev_provider=settings.jev_provider(),
                                    jev_model=settings.jev_model() or None,
                                    jev_base_url=settings.jev_base_url() or None,
+                                   self_rank=settings.self_rank(),
                                    on_stage=stage),
                      title, revision))
     except Exception as e:
