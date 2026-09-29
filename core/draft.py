@@ -125,48 +125,84 @@ def _prob_value(v) -> float | None:
     return max(0.0, float(v))
 
 
+def _pairs_from_objs(objs: list) -> tuple[list[str], list[float] | None]:
+    """一组 reply 对象 → (候选, 概率|None)。缺文本的整批作废走兜底；缺概率只留文本；
+    0~100 的按百分比折算。"""
+    pairs = []
+    for it in objs:
+        t = it.get("reply") or it.get("text") or it.get("message") or it.get("content")
+        if t is None:
+            return [], None
+        p = it.get("prob")
+        if p is None:
+            p = it.get("probability", it.get("score", it.get("chance")))
+        pairs.append((_clean(str(t)), _prob_value(p)))
+    pairs = [(t, p) for t, p in pairs if t]
+    texts = [t for t, _ in pairs]
+    probs = [p for _, p in pairs]
+    if not texts:
+        return [], None
+    if any(p is None for p in probs):
+        return texts, None
+    if max(probs) > 1.0 + 1e-6:  # 模型按百分比给（55/30/15）
+        probs = [p / 100.0 for p in probs]
+    return texts, probs
+
+
+def _extract_replies(content: str) -> list[dict]:
+    """截断/没包数组外壳时的抢救：从每个 { 起用 JSONDecoder.raw_decode 逐段解，
+    解得出且带 reply（或 text）键的收下；最后一个被截断的对象解不开，自然跳过。"""
+    decoder = json.JSONDecoder()
+    found, i = [], 0
+    while True:
+        i = content.find("{", i)
+        if i < 0:
+            return found
+        try:
+            obj, end = decoder.raw_decode(content, i)
+        except ValueError:
+            i += 1
+            continue
+        i = end
+        if isinstance(obj, dict) and (obj.get("reply") or obj.get("text")):
+            found.append(obj)
+
+
 def _parse_ranked(content: str) -> tuple[list[str], list[float] | None]:
     """self_rank 模式的输出 → (候选, 概率|None)。
 
     认两种 JSON 形状：[{"reply":…,"prob":…}, …] 和 {"replies":[…],"probabilities":[…]}；
-    其余（普通字符串数组、行格式、裸文本）退回 _parse_candidates，概率记 None——
-    概率缺失/给不全时 engine 会自动退回独立排序调用，宁缺毋假。
-    给 0~100 的按百分比折算；最终归一化在 draft_candidates 过滤合并之后做。"""
+    输出截断/缺外壳时用 raw_decode 抢救其中完整的对象（实测截断是 400 max_tokens 顶到了）。
+    实在没有就走 _parse_candidates 兜底，但 { 开头的机器残骸一律丢弃——绝不把 JSON
+    当聊天消息送进候选（22:39 线上事故就是这么来的）。概率缺失/给不全返回 None，
+    engine 自动退回独立排序调用。"""
     cleaned = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE).strip()
-    texts: list[str] = []
-    probs: list = []
+
+    def _fallback() -> tuple[list[str], list[float] | None]:
+        try:
+            texts = _parse_candidates(content)
+        except JevError:
+            texts = []
+        return [t for t in texts if not t.lstrip().startswith("{")], None
+
     try:
         obj = json.loads(cleaned)
-        if isinstance(obj, dict) and isinstance(obj.get("replies"), list):
-            rep, raw = obj["replies"], obj.get("probabilities")
-            if not isinstance(raw, list) or len(raw) != len(rep):
-                raw = [None] * len(rep)
-            pairs = [(_clean(str(t)), _prob_value(p)) for t, p in zip(rep, raw)]
-            pairs = [(t, p) for t, p in pairs if t]  # 先滤空再对齐，别按长度切片错位
-            texts = [t for t, _ in pairs]
-            probs = [p for _, p in pairs]
-        elif isinstance(obj, list) and obj and all(isinstance(x, dict) for x in obj):
-            pairs = []
-            for it in obj:
-                t = it.get("reply") or it.get("text") or it.get("message") or it.get("content")
-                if t is None:
-                    return _parse_candidates(content), None
-                p = it.get("prob")
-                if p is None:
-                    p = it.get("probability", it.get("score", it.get("chance")))
-                pairs.append((_clean(str(t)), _prob_value(p)))
-            pairs = [(t, p) for t, p in pairs if t]
-            texts = [t for t, _ in pairs]
-            probs = [p for _, p in pairs]
-        else:
-            return _parse_candidates(content), None  # 普通字符串数组等
     except Exception:
-        return _parse_candidates(content), None
-    if not texts or any(p is None for p in probs) or len(probs) != len(texts):
-        return texts or _parse_candidates(content), None
-    if max(probs) > 1.0 + 1e-6:  # 模型按百分比给（55/30/15）
-        probs = [p / 100.0 for p in probs]
-    return texts, probs
+        got = _pairs_from_objs(_extract_replies(cleaned))
+        return got if got[0] else _fallback()
+    if isinstance(obj, dict) and isinstance(obj.get("replies"), list):
+        rep = obj["replies"]
+        raw = obj.get("probabilities")
+        objs = [{"reply": t, "prob": raw[i] if isinstance(raw, list) and i < len(raw) else None}
+                for i, t in enumerate(rep)]
+        got = _pairs_from_objs(objs)
+        return got if got[0] else _fallback()
+    if isinstance(obj, list) and obj and all(isinstance(x, dict) for x in obj):
+        got = _pairs_from_objs(obj)
+        return got if got[0] else _fallback()
+    if isinstance(obj, list) and all(isinstance(x, str) for x in obj):
+        return _parse_candidates(content), None  # 普通字符串数组：概率没给
+    return _fallback()
 
 
 def _align_scores(texts: list[str], probs: list[float] | None, kept: list[str]) -> list:
@@ -303,10 +339,12 @@ def draft_candidates(messages: list, relationship: str, provider: str = "deepsee
              if self_rank else "\n\n输出恰好 3 条候选，JSON 数组，每条一句。")
     key = _api_key(LLM_ENV)  # 起草只有这一把 key，换来源不用重填
     # 1.2：DeepSeek 自己推荐的闲聊档位，0.8 出来的话太板正
-    # max_tokens：三句话本来 400 够，但思考过程也算进 max_tokens，开了思考模式 400 会把答案截断
+    # max_tokens：三句话本来 400 够，但思考过程也算进 max_tokens，开了思考模式 400 会把答案截断；
+    # 自评模式的 reply+prob 包装更长（实测 400 顶到过截断，JSON 断了残骸会漏进候选），放到 1600
     call = lambda turns: chat(  # noqa: E731 —— 三个参数会变，其余每次都一样
         spec.protocol, base_url or spec.base, key, model or spec.default, system, turns,
-        temperature=1.2, max_tokens=4000 if thinking else 400, thinking=thinking,
+        temperature=1.2, max_tokens=4000 if thinking else (1600 if self_rank else 400),
+        thinking=thinking,
         extra_body=spec.extra(thinking), headers=spec.headers, timeout=timeout)
 
     content = call([user])
@@ -382,6 +420,15 @@ if __name__ == "__main__":
         ["甲", "乙", "丙"], [0.6, 0.3, 0.1])
     assert _parse_ranked('[{"reply":"甲"},{"reply":"乙"},{"reply":"丙"}]') == (
         ["甲", "乙", "丙"], None)  # 少给概率 → None
+    # ---- 22:39 线上事故回归：截断/缺外壳的自评输出 ----
+    # 尾巴被截断（400 tokens 顶到）：完整对象抢救出来，残骸不进候选
+    assert _parse_ranked('[{"reply":"甲","prob":0.6},{"reply":"乙","prob":0.3},'
+                         '{"reply":"丙","pro') == (["甲", "乙"], [0.6, 0.3])
+    # 数组外壳丢了：raw_decode 从每个 { 逐段解，三条全收
+    assert _parse_ranked('{"reply":"甲","prob":0.6},{"reply":"乙","prob":0.4},'
+                         '{"reply":"丙","prob":0.1}') == (["甲", "乙", "丙"], [0.6, 0.4, 0.1])
+    # 无可救药的机器残骸：兜底也必须把它滤掉，绝不当聊天消息（= 卡片里出现 {"reply":…）
+    assert _parse_ranked('{"reply":"好呀","pro') == ([], None)
     assert _align_scores(["a", "b", "c"], [0.6, None, 0.4], ["a", "c"]) == [0.6, 0.4]
     assert _align_scores(["a"], [0.9], ["a", "b"]) == [0.9, None]
     assert _normalize_scores([2, 6, 2]) == [0.2, 0.6, 0.2]
