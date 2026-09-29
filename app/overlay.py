@@ -39,6 +39,16 @@ def _choice(answers, name):
     return T(CHOICE_LABELS[name].get((answers.get(name) or {}).get("choice"), "暂未判断"))
 
 
+def stage_detail(stages) -> str:
+    """engine 返回的分段耗时 → 一行话：判断 6.2s · 起草 4.1s · 排序 7.8s · 共 18.6s。
+    状态行和聊天记录共用；失败那段后面带个 ✗（判断失败却跑完了，多半就是它拖的）。"""
+    label = {"judge": "判断", "draft": "起草", "rank": "排序"}
+    parts = [f"{T(label[s['name']])} {s['seconds']:.1f}s"
+             + ("" if s.get("ok", True) else " ✗") for s in stages]
+    total = sum(s["seconds"] for s in stages)
+    return " · ".join(parts) + f" · {T('共')} {total:.1f}s"
+
+
 def _mp_banner_path() -> str:
     """打包后在 _MEIPASS/docs，源码跑在仓库 docs/。"""
     root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -610,7 +620,8 @@ class Overlay:
         self._fetched.done.connect(self._models_fetched)
         self.jev = self._model_group(box, "判断 · Jev", "jev", providers.JEV_PROVIDERS)
         box.addWidget(self._hint(
-            "判断意图、紧张度，并给三条候选排序。两家给的是同一个 Jev，必填。"
+            "判断意图、紧张度，并给三条候选排序。OpenRouter、TypeSafe、小米 MiMo 或自定义 "
+            "OpenAI 兼容四选一，必填。"
         ))
         self.draft = self._model_group(box, "起草 · 语言模型", "draft", providers.DRAFT_PROVIDERS)
         box.addWidget(self._hint(
@@ -655,6 +666,8 @@ class Overlay:
     def _model_group(self, box, title, kind, table):
         """一组「来源 / 密钥 / 模型」控件，判断和起草各一份。table 是 core/providers.py 里那张表。"""
         group = SimpleNamespace(kind=kind, table=table, ids=list(table),
+                                custom=providers.CUSTOM if kind == "draft"
+                                else providers.JEV_CUSTOM,
                                 keyTitle="判断" if kind == "jev" else "起草",
                                 stored_key=lambda k=kind: (settings.jev_key() if k == "jev"
                                                            else settings.llm_key()))
@@ -672,14 +685,14 @@ class Overlay:
         bind(group.providerBox, lambda: f"{T(title)} · {T('来源')}", "setAccessibleName")
         source_label.setBuddy(group.providerBox)
         box.addWidget(group.providerBox)
-        if kind == "draft":  # 只有两个「自定义」来源要自己填地址，别的来源这一行藏着
-            self.baseLabel = _label("Base URL", 13)
-            box.addWidget(self.baseLabel)
-            self.baseEdit = LineEdit()
-            bind(self.baseEdit, "https://你的服务/v1", "setPlaceholderText")
-            bind(self.baseEdit, "自定义来源 Base URL", "setAccessibleName")
-            self.baseLabel.setBuddy(self.baseEdit)
-            box.addWidget(self.baseEdit)
+        # 自定义来源要自己填地址：判断和起草各一行，没选自定义来源时藏着（显隐由 _sync_model_fields 管）
+        group.baseLabel = _label("Base URL", 13)
+        box.addWidget(group.baseLabel)
+        group.baseEdit = LineEdit()
+        bind(group.baseEdit, "https://你的服务/v1", "setPlaceholderText")
+        bind(group.baseEdit, "自定义来源 Base URL", "setAccessibleName")
+        group.baseLabel.setBuddy(group.baseEdit)
+        box.addWidget(group.baseEdit)
         key_label = _tlabel("密钥", 13)
         box.addWidget(key_label)
         group.keyEdit = PasswordLineEdit()
@@ -688,7 +701,7 @@ class Overlay:
         group.keyEdit.returnPressed.connect(self._save)
         box.addWidget(group.keyEdit)
         box.addWidget(self._hint(
-            "OpenRouter 的 key 或 TypeSafe 的 key，看上面选的来源。" if kind == "jev"
+            "OpenRouter、TypeSafe、小米 MiMo 或自定义来源的 key，看上面选的来源。" if kind == "jev"
             else "上面选哪家就填哪家的 key；换来源重填一次，只存这一把。"))
         model_label = _tlabel("模型", 13)
         box.addWidget(model_label)
@@ -734,18 +747,18 @@ class Overlay:
             bind(group.keyState, "已配置" if configured else "未配置")
             bind(group.keyEdit, "已配置，留空保留" if configured else
                  lambda name=name: T("输入 {name} API 密钥").format(name=name), "setPlaceholderText")
+            custom = provider in group.custom
+            group.baseLabel.setVisible(custom)
+            group.baseEdit.setVisible(custom)
             if self._compact:
                 name = group.providerBox.fontMetrics().elidedText(name, Qt.ElideRight, 180)
             group.providerBox.setText(name)
-        custom = self._provider_of(self.draft) in providers.CUSTOM
-        self.baseLabel.setVisible(custom)
-        self.baseEdit.setVisible(custom)
 
     def _fetch_models(self, group):
         """「获取模型」：拿填的 key（没填就拿存的）去问接口，网络调用丢后台线程。"""
         provider = self._provider_of(group)
-        custom = group.kind == "draft" and provider in providers.CUSTOM
-        base = self.baseEdit.text().strip() if custom else None
+        custom = provider in group.custom
+        base = group.baseEdit.text().strip() if custom else None
         key = group.keyEdit.text().strip() or group.stored_key()
         if not key:
             bind(group.status, "先填密钥", "setText")
@@ -762,7 +775,7 @@ class Overlay:
         """后台线程：判断走 jev_client，起草按协议走 llm；失败把原因一起送回主线程。"""
         try:
             if group.kind == "jev":
-                models = jev_client.list_models(provider, key)
+                models = jev_client.list_models(provider, key, base_url=base)
             else:
                 spec = providers.DRAFT_PROVIDERS[provider]
                 models = llm.list_models(spec.protocol, base or spec.base, key, headers=spec.headers)
@@ -844,7 +857,8 @@ class Overlay:
         self.targetSwitch.setChecked(settings.reply_target())
         self._set_group(self.jev, settings.jev_provider(), settings.jev_model())
         self._set_group(self.draft, settings.draft_provider(), settings.draft_model())
-        self.baseEdit.setText(settings.draft_base_url())
+        self.jev.baseEdit.setText(settings.jev_base_url())
+        self.draft.baseEdit.setText(settings.draft_base_url())
         self.thinkingSwitch.setChecked(settings.thinking())
         self.updateSwitch.setChecked(settings.check_update())
         self.set_debug_switch(settings.debug_view())  # 屏蔽信号地拨，别在加载时开关一遍窗口
@@ -856,17 +870,18 @@ class Overlay:
         relationship = relationship or self.relEdit.text().strip()
         jev_provider = self._provider_of(self.jev)
         draft_provider = self._provider_of(self.draft)
-        base = self.baseEdit.text().strip()
         if not relationship:
             self._settings_feedback("请填写关系背景，或选择一个已有选项。", error=True)
             self.relEdit.setFocus()
             return
-        if draft_provider in providers.CUSTOM and not base:
-            self._settings_feedback("自定义来源要填 Base URL。", error=True)
-            self.baseEdit.setFocus()
-            return
         for group, provider in ((self.jev, jev_provider), (self.draft, draft_provider)):
             name = group.table[provider].name
+            if provider in group.custom and not group.baseEdit.text().strip():
+                self._settings_feedback(lambda group=group:
+                                        T("「{name}」的自定义来源要填 Base URL。")
+                                        .format(name=T(group.keyTitle)), error=True)
+                group.baseEdit.setFocus()
+                return
             if not group.keyEdit.text().strip() and not group.stored_key():
                 self._settings_feedback(lambda group=group:
                                         T("请先填写 {name} 的 API 密钥。").format(name=T(group.keyTitle)), error=True)
@@ -881,10 +896,11 @@ class Overlay:
                           jev_provider_text=jev_provider,
                           jev_key_text=self.jev.keyEdit.text().strip() or None,
                           jev_model_text=self.jev.modelBox.text().strip(),
+                          jev_base_url_text=self.jev.baseEdit.text().strip(),
                           draft_provider_text=draft_provider,
                           llm_key_text=self.draft.keyEdit.text().strip() or None,
                           draft_model_text=self.draft.modelBox.text().strip(),
-                          draft_base_url_text=base,
+                          draft_base_url_text=self.draft.baseEdit.text().strip(),
                           reply_target_on=self.targetSwitch.isChecked(),
                           style_text=self.styleEdit.text().strip(),
                           thinking_on=self.thinkingSwitch.isChecked(),
@@ -1237,7 +1253,12 @@ class Overlay:
         updated_at = datetime.now().strftime("%H:%M")
         bind(self.updated, lambda: updated_at + " " + T("更新"))
         if self.cands:
-            self.set_status("建议已更新，选一句适合你的回复", "success")
+            stages = result.get("stages")
+            if stages:  # 分段耗时挂在成功状态后面，哪段慢一眼看到（方案0 的可见出口之一）
+                self.set_status(lambda: T("建议已更新，选一句适合你的回复")
+                                + " · " + stage_detail(stages), "success")
+            else:
+                self.set_status("建议已更新，选一句适合你的回复", "success")
         else:
             self.set_status("未生成可用回复，请等待下一条新消息。", "error")
 

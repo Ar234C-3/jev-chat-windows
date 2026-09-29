@@ -3,7 +3,7 @@
 
 链路是三段式：Jev 判断（7 道题） → 带着判断起草 3 条 → Jev 排序，两次 Jev 调用。
 
-全程只要两把 key：判断一把 JEV_API_KEY（OpenRouter 或 TypeSafe 的），起草一把 LLM_API_KEY。
+全程只要两把 key：判断一把 JEV_API_KEY（OpenRouter、TypeSafe 或小米 MiMo 的），起草一把 LLM_API_KEY。
 
     set JEV_API_KEY=...   &  set LLM_API_KEY=...    (Windows)
     export JEV_API_KEY=... && export LLM_API_KEY=...(mac/Linux)
@@ -32,7 +32,7 @@ MESSAGES = [
 ]
 RELATIONSHIP = "romantic partners"
 PROVIDER = "deepseek"        # 起草来源，见 core.providers.DRAFT_PROVIDERS
-JEV_PROVIDER = "openrouter"  # 判断来源：openrouter 或 typesafe
+JEV_PROVIDER = "openrouter"  # 判断来源：openrouter / typesafe / mimo
 
 
 def fmt(name: str, ans: dict) -> str:
@@ -76,6 +76,10 @@ def main() -> int:
     if u:
         print(f"\nusage: in={u.get('input_tokens')} out={u.get('output_tokens')} "
               f"cost=${u.get('cost')}")
+    stages = r.get("stages") or []
+    if stages:  # 分段耗时：判断慢还是起草慢，跑一条就有数
+        print("\n耗时: " + " · ".join(f"{s['name']} {s['seconds']}s" for s in stages)
+              + f" · 共 {sum(s['seconds'] for s in stages)}s")
     print("\n期望核对: true_intent≈confirm_you_care, best_action≈check_history, danger_level 中高档")
     return 0
 

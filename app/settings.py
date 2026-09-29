@@ -12,7 +12,8 @@ import json
 import os
 import sys  # 只为下面这一处：打包后 __file__ 指向临时解包目录，config.json 得放在 exe 旁边才存得住
 
-from core.providers import CUSTOM, DRAFT_PROVIDERS, JEV_ENV, JEV_PROVIDERS, LEGACY, LLM_ENV
+from core.providers import (CUSTOM, DRAFT_PROVIDERS, JEV_CUSTOM, JEV_ENV, JEV_PROVIDERS,
+                            LEGACY, LLM_ENV)
 
 _ROOT = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
          else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -75,6 +76,10 @@ def draft_model() -> str:
 def draft_base_url() -> str:
     """自定义来源的 Base URL；其余来源用表里的，这里返回空。"""
     return str(_read("draft_base_url") or "") if draft_provider() in CUSTOM else ""
+
+def jev_base_url() -> str:
+    """判断的自定义 OpenAI 兼容来源的 Base URL；其余判断来源返回空。"""
+    return str(_read("jev_base_url") or "") if jev_provider() in JEV_CUSTOM else ""
 
 def reply_target() -> bool:
     """群聊指定回复对象：开了才在界面上选回复给谁、才把对象喂给模型。默认关。"""
@@ -153,7 +158,8 @@ has_key = has_jev_key  # 旧名字：界面上「配没配好」问的就是判�
 
 def save(relationship_text: str | None = None, context_n: int | None = None, *,
          jev_provider_text: str | None = None, jev_key_text: str | None = None,
-         jev_model_text: str | None = None, draft_provider_text: str | None = None,
+         jev_model_text: str | None = None, jev_base_url_text: str | None = None,
+         draft_provider_text: str | None = None,
          llm_key_text: str | None = None, draft_model_text: str | None = None,
          draft_base_url_text: str | None = None, reply_target_on: bool | None = None,
          style_text: str | None = None, thinking_on: bool | None = None,
@@ -182,6 +188,7 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
         "relationship": relationship_text or relationship(), "context": n,
         "style": keep(style_text, "style"),
         "jev_provider": jev, "jev_model": keep(jev_model_text, "jev_model"),
+        "jev_base_url": keep(jev_base_url_text, "jev_base_url"),
         "draft_provider": draft, "draft_model": keep(draft_model_text, "draft_model"),
         "draft_base_url": keep(draft_base_url_text, "draft_base_url"),
         "reply_target": flag(reply_target_on, reply_target),

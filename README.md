@@ -45,8 +45,11 @@
 设置页的「模型」卡片分两节，各填一把 key：
 
 1. **判断 · Jev** —— 判断意图、紧张度，并给三条候选排序。来源选 **OpenRouter**（默认，key 在
-   [openrouter.ai](https://openrouter.ai/) 申请）或 **TypeSafe 直连**（key 在
-   [console.typesafe.ai](https://console.typesafe.ai/) 申请）。填的是哪家的 key 看你上面选了哪家。
+   [openrouter.ai](https://openrouter.ai/) 申请）、**TypeSafe 直连**（key 在
+   [console.typesafe.ai](https://console.typesafe.ai/) 申请）、**小米 MiMo**（OpenAI 兼容接口，
+   key 在 [platform.xiaomimimo.com](https://platform.xiaomimimo.com/) 申请），或者
+   **自定义 · OpenAI 兼容**（Base URL 和模型都自己填，任何 OpenAI 兼容服务都行）。
+   填的是哪家的 key 看你上面选了哪家。
 2. **起草 · 语言模型** —— 写那三条候选。默认 **DeepSeek 官网**直连，key 在
    [platform.deepseek.com](https://platform.deepseek.com/) 申请（很便宜，起草一次几厘钱）。
    换别家见下面的表，OpenAI / Anthropic / Gemini 三种接口都支持。
@@ -60,7 +63,8 @@
 DeepSeek 官方 API（`api.deepseek.com`）国内直连，起草基本就是一次 HTTP 请求的时间，体感差好几倍。
 所以起草默认就是它，不用改。
 
-判断那一步比起草轻得多，慢一点无所谓，默认走 OpenRouter 即可；嫌慢就把它也换成 TypeSafe 直连。
+判断那一步比起草轻得多，慢一点无所谓，默认走 OpenRouter 即可；嫌慢就把它换成 TypeSafe 直连，
+想用小米的模型就换 **小米 MiMo**（走普通 chat 接口，7 道判断题折成 prompt，答案解析回同一形状）。
 两把 key 都只进注册表，不落文件。
 
 **日常怎么用**
@@ -112,12 +116,15 @@ RapidOCR 自带的只有中英文模型，韩文整段都是乱码：同一个 K
 - **3 条候选**：每条带 Jev 给的胜出概率百分比，按概率排序，推荐那条置顶并标「推荐回复」；
   每条都有「填入」和复制按钮。
 - **判断摘要**：建议动作、可能意图、对方可能需要、紧张度 0–9。
+- **分段计时与进度提示**：生成时状态栏依次显示「判断 → 起草 → 排序」，完成后状态行和聊天记录里
+  给出各段耗时（如 `判断 6.2s · 起草 4.1s · 排序 7.8s · 共 18.6s`）；判断失败会记下它卡了多久、
+  已退回盲起草——排查「怎么这么慢」先看这两行。
 - **采集开关**：标题栏一拨就停，WGC 会话一起停掉（Win10 的黄框跟着消失），已有候选不受影响。
 - **实时聊天记录**：底部展开，看 OCR 到底读出了什么，认错了一眼就能发现。
 - **调试视图**（可选）：另开一个窗口，实时画出截到的画面和每个识别框——绿 = 我、蓝 = 对方、
   灰 = 过滤掉的灰字、橙 = 当成发言人名、红 = 当成图片丢掉、黄 = 小字丢掉，外加消息区和头部的框、
   OCR 耗时、这一帧读出来的每一行。识别不对时一眼看出是哪一步的锅。只在内存里画，不存图。
-- **两个模型都能换**：判断走 OpenRouter 或 TypeSafe 直连；起草有 12 家预设（默认 DeepSeek 官网），
+- **两个模型都能换**：判断走 OpenRouter、TypeSafe 直连、小米 MiMo 或自定义 OpenAI 兼容地址；起草有 12 家预设（默认 DeepSeek 官网），
   OpenAI / Anthropic / Gemini 三种协议都支持，也能填自己的 Base URL。全程只要两把 key。
 - **思考模式开关**：默认关；开了模型先想再写，更斟酌但慢好几倍、贵一些。
 - **参考上下文条数**：3~30，默认 10，起草和判断都按它取最近 N 条。
@@ -150,7 +157,8 @@ RapidOCR 自带的只有中英文模型，韩文整段都是乱码：同一个 K
   不夹带任何聊天内容；设置里「启动时检查更新」关掉就完全不发这个请求，源码直接跑（没有版本号）也
   不会发。
 
-什么会出网：判断（`JEV_API_KEY`）去你选的 OpenRouter 或 TypeSafe 直连；起草（`LLM_API_KEY`）发给你
+什么会出网：判断（`JEV_API_KEY`）去你选的 OpenRouter、TypeSafe 直连、小米 MiMo
+（`api.xiaomimimo.com`）或者自填的 OpenAI 兼容地址；起草（`LLM_API_KEY`）发给你
 在设置里选的那家接口（DeepSeek 官网、OpenRouter、OpenAI、Moonshot、智谱、通义、硅基流动、
 OpenCode Go、Anthropic、Gemini，或者自填的 OpenAI 兼容 / Anthropic 兼容地址），加上启动时（可关）一次到
 GitHub 查版本号。**本项目没有任何自建服务器**，聊天内容只在触发分析的那一刻，发给你自己在设置里
@@ -187,6 +195,12 @@ WGC 截聊天窗口（GPU 合成窗口也能截，被遮挡也能截）
 | --- | --- | --- |
 | OpenRouter（默认） | `openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` |
 | TypeSafe 直连 | `api.typesafe.ai`（官方 `typesafe-sdk`） | `jev-latest` |
+| 小米 MiMo | `api.xiaomimimo.com/v1`（普通 chat 接口） | `mimo-v2.6-pro` |
+| 自定义 · OpenAI 兼容 | 自己填 | 自己选 |
+
+前两家是 Decisions API：结构化的 7 道题直接进出，概率是接口原生给的。小米 MiMo 和
+自定义 · OpenAI 兼容都是普通 OpenAI 兼容 chat 接口，判断题折成 prompt、要求只回 JSON，
+再解析回同一形状——一次分析的行为和降级路径跟前两家完全一致。
 
 **起草 3 条候选（key：`LLM_API_KEY`）**
 
@@ -210,7 +224,8 @@ OpenCode Go 的列表只留走 `/chat/completions` 的模型（DeepSeek、GLM、
 MiniMax、Qwen 走 `/messages`，Grok、GPT 走 `/responses`，选了会失败，所以不放进下拉框。
 三种协议各走自家官方 SDK（`openai` / `anthropic` / `google-genai`），不自己拼 HTTP；
 判断那条 OpenRouter 的路是唯一的例外——`typesafe-sdk` 把路径写死成 `/v1/systemone`，
-打不到 OpenRouter 的 `/api/alpha/decisions`。
+打不到 OpenRouter 的 `/api/alpha/decisions`。判断里的小米 MiMo 走的也是官方 `openai` SDK
+（复用起草那条 `llm.chat()`），只是外面多包一层「题目 ↔ JSON」的桥接。
 
 两节各一把 key，都必填。链路是**三段式**（issue #4）：先让 Jev 答 7 道判断题，把
 「对方意图 / 对方需要 / 建议动作 / 紧张度」折成一小段中文小抄喂给起草，三条候选都顺着这个判断写；
@@ -247,7 +262,7 @@ MiniMax、Qwen 走 `/messages`，Grok、GPT 走 `/responses`，选了会失败�
 - **Python 3.10–3.12**（Releases 里的 exe 是 CI 用 3.11 打的；只想用 exe 的话不用装 Python。3.13+ 不行：rapidocr-onnxruntime 1.4.x 官方包 requires_python 封顶 <3.13，pip 会静默改装 1.2.3，启动即 KeyError）
 - **聊天窗口**
 - **两把 API key**：判断用 `JEV_API_KEY`，默认来源 [OpenRouter](https://openrouter.ai/)（或
-  [TypeSafe 直连](https://console.typesafe.ai/)）；起草用 `LLM_API_KEY`，默认
+  [TypeSafe 直连](https://console.typesafe.ai/)、[小米 MiMo](https://platform.xiaomimimo.com/)、自定义 OpenAI 兼容地址）；起草用 `LLM_API_KEY`，默认
   [DeepSeek 官网](https://platform.deepseek.com/)。详见下面「使用说明」
 
 > Win10 上 WGC 会在目标窗口外画一圈黄框，系统不给关；Win11 才能关掉。
@@ -297,9 +312,10 @@ pyinstaller --noconfirm --clean jev.spec
 | 群聊指定回复对象 | 开了群聊里才有「回复对象」那一行，候选针对 TA 写 | `config.json` → `reply_target`（默认关） |
 | 启动时检查更新 | 开了才在启动时查一次 GitHub 最新版本号，有新版本就在标题栏下面提示 | `config.json` → `check_update`（默认开） |
 | 调试视图 | 另开一个窗口实时显示截到的画面和识别框，看识别在哪一步认错。拨一下立刻生效，不用点保存；关掉那个窗口等于关掉开关 | `config.json` → `debug_view`（默认关） |
-| 判断 · 来源 | OpenRouter 还是 TypeSafe 直连 | `config.json` → `jev_provider`（默认 `openrouter`） |
+| 判断 · 来源 | OpenRouter、TypeSafe 直连、小米 MiMo 或自定义 OpenAI 兼容 | `config.json` → `jev_provider`（默认 `openrouter`） |
 | 判断 · 密钥 | 上面选哪家就填哪家的 key。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `JEV_API_KEY` |
 | 判断 · 模型 | 可手打，也可点「获取模型」拉列表挑 | `config.json` → `jev_model`（空 = 该来源默认） |
+| 判断 · Base URL | 只有「自定义 · OpenAI 兼容」来源才出现这一行 | `config.json` → `jev_base_url` |
 | 起草 · 来源 | 上面那张表里的任意一家 | `config.json` → `draft_provider`（默认 `deepseek`） |
 | 起草 · Base URL | 只有两个「自定义」来源才出现这一行 | `config.json` → `draft_base_url` |
 | 起草 · 密钥 | 上面选哪家就填哪家的 key。已配置时留空 = 保留 | 注册表 `HKCU\Environment` → `LLM_API_KEY` |
@@ -347,7 +363,7 @@ core/                   Jev 判断内核，平台无关，跟安卓原版同一�
   engine.py             唯一入口 analyze(messages, relationship) → 候选 + 排序 + 判断
   providers.py          两张来源表（判断 / 起草）：协议、地址、默认模型；纯数据，不认 key
   llm.py                三种协议的薄适配层，一律走官方 SDK：openai / anthropic / google-genai
-  jev_client.py         Jev 判断客户端：OpenRouter（urllib）/ TypeSafe 直连（typesafe-sdk）；脱敏、退避
+  jev_client.py         Jev 判断客户端：OpenRouter（urllib）/ TypeSafe 直连（typesafe-sdk）/ 小米 MiMo（chat 桥接）；脱敏、退避
   questions.py          7 道判断题 + build_state() + build_rank_question() + 判断小抄 guidance_text() / 中文标签 CHOICE_LABELS
   draft.py              起草 3 条候选：拼提示词、解析、过滤、不足时追问补齐；调用走 llm.py
 tools/
