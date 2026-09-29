@@ -19,6 +19,28 @@ except ImportError:
 _REPLY_IDX = {"reply_a": 0, "reply_b": 1, "reply_c": 2}
 
 
+def _fail_reason(exc: Exception) -> str:
+    """JevError → 可入日志的安全分类：只留错误类型/HTTP 状态码，**绝不透传异常原文**
+    （原文可能混着对话或模型输出，KICKOFF 的不落日志约束）。判断/排序失败的原因行走这里。"""
+    status = getattr(exc, "status", None)
+    if status:
+        return {401: "密钥被拒", 403: "没有权限", 404: "模型或地址不对", 422: "请求被拒",
+                429: "被限流", 529: "服务过载"}.get(status, f"HTTP {status}")
+    msg = str(exc)
+    lower = msg.lower()
+    if "JSON" in msg or "解析不出" in msg:
+        return "输出解析失败"
+    if "timed out" in lower or "timeout" in lower or "超时" in msg:
+        return "超时"
+    if "connection" in lower or "request failed" in lower or "网络" in msg:
+        return "网络错误"
+    if "Base URL" in msg:
+        return "缺 Base URL"
+    if "not set" in lower or "密钥" in msg:
+        return "缺密钥"
+    return "未知错误"
+
+
 def _add_usage(total: dict, one: dict | None) -> None:
     """两次 Jev 调用的 usage 相加（tokens、cost）；非数字的字段后来的盖掉前面的。"""
     for k, v in (one or {}).items():
@@ -42,9 +64,11 @@ def analyze(messages: list, relationship: str, model: str | None = None,
     thinking: 起草时是否开思考模式，只影响起草，默认关。
     model / jev_model = None 用该来源的默认模型。
     on_stage: 可选的进度回调，在调用方线程里同步执行
-        on_stage(name, phase, seconds=None, ok=True)，
+        on_stage(name, phase, seconds=None, ok=True, reason=None)，
         name ∈ {judge, draft, rank}、phase ∈ {start, end}；end 带这段的耗时（秒），
-        ok=False 表示这段失败（判断失败会走盲起草的降级，排序失败按第一条推荐）。
+        ok=False 表示这段失败（判断失败会走盲起草的降级，排序失败按第一条推荐），
+        reason 是 _fail_reason 的安全分类（如「超时」「HTTP 429」「输出解析失败」），
+        只有类型和状态码、绝不含对话或模型输出。
         回调里抛异常会被吞掉——进度提示是旁路，不能拖垮分析本身。
     self_rank: 方案②——起草时自评胜出概率（设置里的「排序 · 起草自评」），跳过独立排序调用，
         稳定省一次往返；自评概率不可用（模型没给/给不全）时自动退回独立排序。
@@ -65,20 +89,24 @@ def analyze(messages: list, relationship: str, model: str | None = None,
     answers: dict = {}
     stages: list = []
 
-    def _emit(name, phase, seconds=None, ok=True):
+    def _emit(name, phase, seconds=None, ok=True, reason=None):
         if on_stage:
             try:
-                on_stage(name, phase, seconds, ok)
+                on_stage(name, phase, seconds, ok, reason)
             except Exception:
                 pass  # 进度回调是外部代码，它挂了分析照跑
 
-    def _finish(name, t0, ok=True) -> float:
+    def _finish(name, t0, ok=True, reason: str | None = None) -> float:
         seconds = round(time.perf_counter() - t0, 1)
-        stages.append({"name": name, "seconds": seconds, "ok": ok})
-        _emit(name, "end", seconds, ok)
+        entry = {"name": name, "seconds": seconds, "ok": ok}
+        if not ok and reason:
+            entry["reason"] = reason
+        stages.append(entry)
+        _emit(name, "end", seconds, ok, reason)
         return seconds
 
     judged = False
+    fail_reason = None
     _emit("judge", "start")
     t0 = time.perf_counter()
     try:
@@ -87,9 +115,9 @@ def analyze(messages: list, relationship: str, model: str | None = None,
         answers = first.get("answers") or {}
         _add_usage(usage, first.get("usage"))
         judged = True
-    except JevError:
-        pass  # 退回盲起草 + 老的一次合问；错误不打日志（里面可能带请求内容）
-    _finish("judge", t0, ok=judged)
+    except JevError as exc:
+        fail_reason = _fail_reason(exc)  # 只留分类；原文可能带内容，绝不打日志（下面同理）
+    _finish("judge", t0, ok=judged, reason=fail_reason)
 
     _emit("draft", "start")
     t0 = time.perf_counter()
@@ -113,18 +141,18 @@ def analyze(messages: list, relationship: str, model: str | None = None,
         stage = "rank" if "best_reply" in questions else "judge"  # 自评模式下这轮只补判断题
         _emit(stage, "start")
         t0 = time.perf_counter()
-        rank_ok = True
+        rank_ok, rank_reason = True, None
         try:
             second = ask(state, questions, timeout=timeout,
                          provider=jev_provider, model=jev_model, base_url=jev_base_url)
-        except JevError:
+        except JevError as exc:
             if not judged:  # 这轮是判断失败后的补问/老路合问，挂了就是挂了
                 raise
             second = {}  # 判断还在，只是没排上序：下面按第一条推荐
-            rank_ok = False
+            rank_ok, rank_reason = False, _fail_reason(exc)
         answers = {**answers, **(second.get("answers") or {})}
         _add_usage(usage, second.get("usage"))
-        _finish(stage, t0, ok=rank_ok)
+        _finish(stage, t0, ok=rank_ok, reason=rank_reason)
 
     if ranked_by_draft:
         scores = [0.0, 0.0, 0.0]
@@ -170,6 +198,16 @@ if __name__ == "__main__":
             raise SystemExit("应当抛错")
         except JevError as e:
             assert "没有可用候选" in str(e)
+
+    # 失败原因的安全分类：只留类型/状态码，异常原文（可能含对话/模型输出）绝不透传
+    assert _fail_reason(JevError("x", status=429)) == "被限流"
+    assert _fail_reason(JevError("Jev HTTP 401: bad", status=401)) == "密钥被拒"
+    assert _fail_reason(JevError("Jev HTTP 500: boom", status=500)) == "HTTP 500"
+    assert _fail_reason(JevError("判断输出不是合法 JSON：Expecting...")) == "输出解析失败"
+    assert _fail_reason(JevError("Jev request timed out after 30s")) == "超时"
+    assert _fail_reason(JevError("Connection error occurred")) == "网络错误"
+    assert _fail_reason(JevError("自定义判断来源没填 Base URL")) == "缺 Base URL"
+    assert _fail_reason(JevError("对方发来的秘密内容混在报错里")) == "未知错误"  # 不认识就闭嘴
 
     # 分段进度与耗时（独立排序路径）：事件按 judge → draft → rank 的 start/end 成对出现，
     # stages 跟事件对得上；回调里抛异常也不能拖垮分析本身。
@@ -225,10 +263,11 @@ if __name__ == "__main__":
     assert "best_reply" in ask_mock.call_args_list[1].args[1]
     assert r3["scores"] == [0.5, 0.3, 0.2]
 
-    # ② + 判断失败：补问一轮只带 7 道判断题（没有 best_reply），分数仍来自自评
+    # ② + 判断失败：补问一轮只带 7 道判断题（没有 best_reply），分数仍来自自评；
+    # 失败原因（安全分类）同时进 stages[0].reason 和 on_stage 的第 5 个参数
     judge7 = {"answers": {"true_intent": {"type": "choice", "choice": "casual_chat"}},
               "usage": {}}
-    ask_mock = Mock(side_effect=[JevError("判断挂了"), judge7])
+    ask_mock = Mock(side_effect=[JevError("Jev request timed out after 30s"), judge7])
     events = []
     with patch("__main__.ask", ask_mock), \
          patch("__main__.draft_candidates",
@@ -241,9 +280,11 @@ if __name__ == "__main__":
     assert set(JUDGE_QUESTIONS) <= set(second_questions)  # 7 道判断题都在，给摘要用
     assert r4["answers"]["true_intent"]["choice"] == "casual_chat"  # 摘要没断
     assert r4["scores"] == [0.5, 0.3, 0.2]
+    assert r4["stages"][0]["reason"] == "超时"  # 分类进了 stages
     assert [(e[0], e[1]) for e in events] == [
         ("judge", "start"), ("judge", "end"), ("draft", "start"),
         ("draft", "end"), ("judge", "start"), ("judge", "end")]
-    assert events[1][3] is False and events[5][3] is True
+    assert events[1][3] is False and events[1][4] == "超时"  # end 事件带 reason
+    assert events[5][3] is True
 
     print("engine ok")

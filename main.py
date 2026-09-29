@@ -115,8 +115,8 @@ def on_toggle_capture(on):
 
 def analyze_bg(msgs, title, revision, reply_to=None):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
-    def stage(name, phase, seconds=None, ok=True):
-        stage_q.put((name, phase, seconds, ok))  # 进度同样走队列，分析线程不碰 UI
+    def stage(name, phase, seconds=None, ok=True, reason=None):
+        stage_q.put((name, phase, seconds, ok, reason))  # 进度同样走队列，分析线程不碰 UI
 
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
@@ -244,9 +244,10 @@ def drain():
 
 def drain_stages():
     """分段进度 → 状态栏（哪段在跑、停在哪，慢的时候一眼看得到）。
-    判断失败那一下单独进聊天记录：它会白等一轮超时再降级，是 40~60 秒最常见的真凶。"""
+    判断/排序失败那一下进聊天记录：带安全分类的原因（超时/HTTP 状态/解析失败，
+    engine 保证不含对话内容），白等一轮再降级正是 40~60 秒最常见的真凶。"""
     while not stage_q.empty():
-        name, phase, seconds, ok = stage_q.get()
+        name, phase, seconds, ok, reason = stage_q.get()
         if phase == "start":
             if name == "judge":
                 state["judge_ok"] = True
@@ -256,9 +257,13 @@ def drain_stages():
             else:
                 ov.set_status("判断失败，正在合问…" if not state.get("judge_ok", True)
                               else "正在给候选排序…", "busy")
-        elif name == "judge" and not ok:
+        elif not ok and name == "judge":
             state["judge_ok"] = False
-            ov.log(T("判断失败（{secs}），已退回盲起草老路").format(secs=f"{seconds:.1f}s"))
+            ov.log(T("判断失败（{secs} · {reason}），已退回盲起草老路").format(
+                secs=f"{seconds:.1f}s", reason=reason or "未知错误"))
+        elif not ok and name == "rank":
+            ov.log(T("排序失败（{secs} · {reason}），按第一条推荐").format(
+                secs=f"{seconds:.1f}s", reason=reason or "未知错误"))
 
 
 def tick():
