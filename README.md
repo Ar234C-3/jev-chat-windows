@@ -2,11 +2,8 @@
 
 本仓库只维护当前这一套识别。有能力的人可以 Fork 后自行适配别的聊天窗口，作者不提供这项适配，也不对 Fork 出去的改动负责。
 
-## 公众号
+当前版本基于以下版本进行修改(https://github.com/jev-chat/jev-chat-windows/)，详细调整内容请参阅末尾的版本说明。 
 
-反馈和合作走公众号「恸码奇点」。扫左边的码，或者搜一搜这个名字。
-
-<p align="center"><img src="docs/wechat-mp.png" width="640" alt="公众号：恸码奇点"></p>
 
 聊天窗口旁挂的回复辅助：本地 OCR 读屏上的对话 → Jev 判断意图/情绪 → 给出 3 条候选回复 →
 一键填入输入框。**发送永远手动，程序不替你按发送。**
@@ -18,7 +15,7 @@
 
 **普通使用直接下载，不用装 Python、不用碰源码。** 后面的「源码运行」是给开发者的。
 
-👉 **[下载最新版](https://github.com/jev-chat/jev-chat-windows/releases/latest)**
+👉 **[下载最新版](https://github.com/Ar234C-3/jev-chat-windows/releases/latest)**
 
 1. 在 Releases 页下载 `jev-chat-windows-vX.Y.Z.zip`（约 146 MB）
 2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
@@ -293,7 +290,7 @@ MiniMax、Qwen 走 `/messages`，Grok、GPT 走 `/responses`，选了会失败�
 普通使用请直接用上面的[下载即用](#下载即用推荐)。想改代码、调 prompt、自己打包才需要这一节。
 
 ```bash
-git clone https://github.com/jev-chat/jev-chat-windows.git
+git clone https://github.com/Ar234C-3/jev-chat-windows.git
 cd jev-chat-windows
 python -m venv .venv
 .venv\Scripts\activate
@@ -554,7 +551,6 @@ config.json             你自己的设置，不进仓库（在 .gitignore 里�
 - PyInstaller onedir 打包（`jev.spec` + `build.bat`）+ 推 `v*` tag 自动出 Release
 
 ## 致谢
-
 - [Finderchangchang/jev-chat-JARVIS](https://github.com/Finderchangchang/jev-chat-JARVIS) — 安卓原版，
   Jev 判断内核和题目口径都来自这里
 - [RapidOCR](https://github.com/RapidAI/RapidOCR) — 离线中文 OCR
