@@ -214,8 +214,11 @@ GitHub 查版本号。**本项目没有任何自建服务器**，聊天内容只
 | 小米 MiMo | `api.xiaomimimo.com/v1`（普通 chat 接口） | `mimo-v2.6-pro` |
 | 自定义 · OpenAI 兼容 | 自己填 | 自己选 |
 
-前两家是 Decisions API：结构化的 7 道题直接进出，概率是接口原生给的。小米 MiMo 和
-自定义 · OpenAI 兼容都是普通 OpenAI 兼容 chat 接口，判断题折成 prompt、要求只回 JSON，
+前两家是 Decisions API：结构化的 7 道题直接进出，概率是接口原生给的。
+
+🔴（用openrouter和trpsafe在判断阶段耗时更少，体现为mimo v2.6 flash是15-30s，前者只要1-5s）
+
+小米 MiMo 和自定义 · OpenAI 兼容都是普通 OpenAI 兼容 chat 接口，判断题折成 prompt、要求只回 JSON，
 再解析回同一形状——一次分析的行为和降级路径跟前两家完全一致。
 
 **起草 3 条候选（key：`LLM_API_KEY`）**
