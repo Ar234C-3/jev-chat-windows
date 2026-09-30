@@ -55,6 +55,9 @@ class ChatApp:
     join: str                    # how OCR fragments inside one bubble are glued
     is_me: Callable[[np.ndarray], bool]
     trim_top: Callable[[np.ndarray], int] = lambda chat: 0  # rows to skip (pinned notice, ...)
+    # True = 会话名取窗口标题而不是 OCR 头部（QQ：标题=当前会话名，日文/群名 OCR 读不出；
+    # 未激活时标题带「等N个会话」徽标，由调用方剥掉）
+    title_from_window: bool = False
 
 
 WECHAT = ChatApp("wechat", "微信", ("weixin.exe", "wechat.exe"), "微信", (),
@@ -66,7 +69,7 @@ KAKAOTALK = ChatApp("kakaotalk", "카카오톡", ("kakaotalk.exe",), "", ("카�
 # QQ NT 两种窗口并存（实测 probe/qq_*.png）：独立聊天窗 + 标签式主窗（标签条与面板同底色，
 # 靠 chat_area 的竖直分界线切）；主面板标题就是 "QQ"，跳过它、剩下挑最大 = 聊天窗。
 QQ = ChatApp("qq", "QQ", ("qq.exe",), "", ("QQ", ""),
-             "rapidocr", "", _qq_me)
+             "rapidocr", "", _qq_me, title_from_window=True)
 
 APPS = {a.key: a for a in (WECHAT, KAKAOTALK, QQ)}
 DEFAULT = WECHAT
@@ -84,6 +87,7 @@ if __name__ == "__main__":  # 自测：颜色规则用实测像素锁住，改�
     assert by_exe("kakaotalk.exe") is KAKAOTALK and by_exe("weixin.exe") is WECHAT
     assert by_exe("qq.exe") is QQ and by_exe("chrome.exe") is None
     assert get(None) is DEFAULT and get("kakaotalk") is KAKAOTALK and get("qq") is QQ
+    assert QQ.title_from_window and not WECHAT.title_from_window and not KAKAOTALK.title_from_window
     kakao_bubble, kakao_other, kakao_ground = (254, 229, 0), (255, 255, 255), (186, 206, 224)
     assert KAKAOTALK.is_me(np.array(kakao_bubble))
     assert not KAKAOTALK.is_me(np.array(kakao_other))

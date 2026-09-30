@@ -67,6 +67,14 @@ def find_wechat_hwnd():
     return find_chat_hwnd()[0]
 
 
+def window_title(hwnd) -> str:
+    """顶层窗口标题原文。QQ NT 的窗口标题就是当前会话名（标签式主窗跟着激活标签走），
+    比 OCR 头部可靠——日文/特殊字符的会话名 OCR 根本读不出（实测 read_title 返回 ''）。"""
+    buf = ctypes.create_unicode_buffer(256)
+    u32.GetWindowTextW(hwnd, buf, 256)
+    return buf.value
+
+
 def unminimize(hwnd):
     """Windows 不渲染最小化的窗口，什么截图法都拿不到画面。发现被最小化就无激活还原，再压到所有窗口最底下——
     看着跟收起来一样，但 DWM 继续画。不抢焦点、不动大小位置。返回是否动了手。"""
