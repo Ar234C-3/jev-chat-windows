@@ -35,6 +35,15 @@ def _kakao_notice_rows(chat: np.ndarray) -> int:
     return int(rows[-1]) + 1
 
 
+def _qq_me(bg: np.ndarray) -> bool:
+    """QQ NT 自己的气泡 = #12b7f5（品牌亮蓝）+ 白字，两个主题实测一致：
+    白底窗 8860px、浅蓝主题窗 38028px。R 很低是关键——白/浅灰底与泡（R≥240）、
+    主题浅蓝底 #bfe6ff（R=191）、对方主题泡 #abcee5（R=171）全部靠它挡掉；
+    G 下限 178 挡贴图蓝 #01aeef（G=174，差 4，见 probe/qq_colors.py）。"""
+    r, g, b = int(bg[0]), int(bg[1]), int(bg[2])
+    return bool(r < 70 and 178 <= g <= 210 and b >= 235)
+
+
 @dataclass(frozen=True)
 class ChatApp:
     key: str
@@ -46,6 +55,9 @@ class ChatApp:
     join: str                    # how OCR fragments inside one bubble are glued
     is_me: Callable[[np.ndarray], bool]
     trim_top: Callable[[np.ndarray], int] = lambda chat: 0  # rows to skip (pinned notice, ...)
+    # True = 会话名取窗口标题而不是 OCR 头部（QQ：标题=当前会话名，日文/群名 OCR 读不出；
+    # 未激活时标题带「等N个会话」徽标，由调用方剥掉）
+    title_from_window: bool = False
 
 
 WECHAT = ChatApp("wechat", "微信", ("weixin.exe", "wechat.exe"), "微信", (),
@@ -54,8 +66,12 @@ WECHAT = ChatApp("wechat", "微信", ("weixin.exe", "wechat.exe"), "微信", (),
 # the biggest remaining window is the chat that is actually being read.
 KAKAOTALK = ChatApp("kakaotalk", "카카오톡", ("kakaotalk.exe",), "", ("카카오톡", ""),
                     "windows", " ", _kakao_me, _kakao_notice_rows)
+# QQ NT 两种窗口并存（实测 probe/qq_*.png）：独立聊天窗 + 标签式主窗（标签条与面板同底色，
+# 靠 chat_area 的竖直分界线切）；主面板标题就是 "QQ"，跳过它、剩下挑最大 = 聊天窗。
+QQ = ChatApp("qq", "QQ", ("qq.exe",), "", ("QQ", ""),
+             "rapidocr", "", _qq_me, title_from_window=True)
 
-APPS = {a.key: a for a in (WECHAT, KAKAOTALK)}
+APPS = {a.key: a for a in (WECHAT, KAKAOTALK, QQ)}
 DEFAULT = WECHAT
 
 
@@ -69,12 +85,20 @@ def get(key: str | None) -> ChatApp:
 
 if __name__ == "__main__":  # 自测：颜色规则用实测像素锁住，改错了当场炸
     assert by_exe("kakaotalk.exe") is KAKAOTALK and by_exe("weixin.exe") is WECHAT
-    assert by_exe("chrome.exe") is None and get(None) is DEFAULT and get("kakaotalk") is KAKAOTALK
+    assert by_exe("qq.exe") is QQ and by_exe("chrome.exe") is None
+    assert get(None) is DEFAULT and get("kakaotalk") is KAKAOTALK and get("qq") is QQ
+    assert QQ.title_from_window and not WECHAT.title_from_window and not KAKAOTALK.title_from_window
     kakao_bubble, kakao_other, kakao_ground = (254, 229, 0), (255, 255, 255), (186, 206, 224)
     assert KAKAOTALK.is_me(np.array(kakao_bubble))
     assert not KAKAOTALK.is_me(np.array(kakao_other))
     assert not KAKAOTALK.is_me(np.array(kakao_ground))
     assert WECHAT.is_me(np.array((149, 236, 105))) and not WECHAT.is_me(np.array(kakao_bubble))
+    # QQ 实测像素锁（probe/qq_colors.py 两主题帧）：亮蓝我方泡 → me；
+    # 白底、主题浅蓝底、对方主题泡、贴图蓝、微信绿、Kakao 黄 → 全部不是 me
+    assert QQ.is_me(np.array((18, 183, 245))) and QQ.is_me(np.array((17, 185, 246)))
+    for other in ((255, 255, 255), (191, 230, 255), (171, 206, 229), (0, 174, 239),
+                  (149, 236, 105), (254, 229, 0), (243, 243, 243)):
+        assert not QQ.is_me(np.array(other)), other
     pane = np.full((400, 300, 3), kakao_ground, np.uint8)
     assert KAKAOTALK.trim_top(pane) == 0 and WECHAT.trim_top(pane) == 0   # 공고 없는 화면
     pane[20:60] = 255                      # 폭을 꽉 채운 흰 카드 = 공지
