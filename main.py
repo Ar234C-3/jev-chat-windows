@@ -16,7 +16,7 @@ from collections import deque
 from app import settings, update, worker
 from app.capture import find_chat_hwnd
 from app.fill import fill
-from app.overlay import Overlay
+from app.overlay import Overlay, stage_detail
 from app.version import VERSION
 from core.engine import analyze
 from app.i18n import T
@@ -26,9 +26,11 @@ from app.i18n import T
 # 只是缓冲区，实际喂模型几条由设置里的「参考上下文」决定
 # senders：这个群里发过言的人，去重、最近的排最前；target：用户挑的回复对象（None = 跟着最近那个走）
 chats = {}
-state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": ""}
+state = {"area": None, "busy": False, "rerun": None, "hwnd": None, "chat": "",
+         "judge_ok": True}
 results = queue.Queue()
 update_result = queue.Queue()  # 独立小队列，别跟 results 的 (kind, r, title, revision) 形状搅在一起
+stage_q = queue.Queue()  # 分段进度：engine 的 on_stage 在分析线程里塞，tick 在主线程取（Qt 不能跨线程碰）
 
 
 def chat_of(title):
@@ -113,6 +115,9 @@ def on_toggle_capture(on):
 
 def analyze_bg(msgs, title, revision, reply_to=None):
     """后台线程只跑网络调用，结果丢队列；UI 只在主线程的 tick 里动（Qt 不能跨线程碰）。"""
+    def stage(name, phase, seconds=None, ok=True, reason=None):
+        stage_q.put((name, phase, seconds, ok, reason))  # 进度同样走队列，分析线程不碰 UI
+
     try:
         results.put(("ok", analyze(msgs, settings.relationship(), context=settings.context(),
                                    model=settings.draft_model() or None,
@@ -121,7 +126,10 @@ def analyze_bg(msgs, title, revision, reply_to=None):
                                    reply_to=reply_to, style=settings.style(),
                                    thinking=settings.thinking(),
                                    jev_provider=settings.jev_provider(),
-                                   jev_model=settings.jev_model() or None),
+                                   jev_model=settings.jev_model() or None,
+                                   jev_base_url=settings.jev_base_url() or None,
+                                   self_rank=settings.self_rank(),
+                                   on_stage=stage),
                      title, revision))
     except Exception as e:
         results.put(("err", f"{T('分析失败: ')}{e}", title, revision))
@@ -234,8 +242,33 @@ def drain():
             ov.set_status("你已回复，等待对方的新消息")
 
 
+def drain_stages():
+    """分段进度 → 状态栏（哪段在跑、停在哪，慢的时候一眼看得到）。
+    判断/排序失败那一下进聊天记录：带安全分类的原因（超时/HTTP 状态/解析失败，
+    engine 保证不含对话内容），白等一轮再降级正是 40~60 秒最常见的真凶。"""
+    while not stage_q.empty():
+        name, phase, seconds, ok, reason = stage_q.get()
+        if phase == "start":
+            if name == "judge":
+                state["judge_ok"] = True
+                ov.set_status("判断中：先分析对方的意图…", "busy")
+            elif name == "draft":
+                ov.set_status("正在起草 3 条候选…", "busy")
+            else:
+                ov.set_status("判断失败，正在合问…" if not state.get("judge_ok", True)
+                              else "正在给候选排序…", "busy")
+        elif not ok and name == "judge":
+            state["judge_ok"] = False
+            ov.log(T("判断失败（{secs} · {reason}），已退回盲起草老路").format(
+                secs=f"{seconds:.1f}s", reason=reason or "未知错误"))
+        elif not ok and name == "rank":
+            ov.log(T("排序失败（{secs} · {reason}），按第一条推荐").format(
+                secs=f"{seconds:.1f}s", reason=reason or "未知错误"))
+
+
 def tick():
     try:
+        drain_stages()
         drain()
         while not update_result.empty():
             latest, url = update_result.get()
@@ -254,6 +287,8 @@ def tick():
                 chat_of(title)["result"] = r  # 先存着；正看着这个会话才立刻贴上去
                 if title == ov.current_chat():
                     ov.show(r)
+                    if r.get("stages"):  # 分段计时进聊天记录，回头翻「到底哪段慢」用
+                        ov.log(T("本轮耗时：{detail}").format(detail=stage_detail(r["stages"])))
                 else:
                     ov.set_busy(False)
             else:

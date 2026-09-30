@@ -115,21 +115,26 @@ def main() -> int:
     demo_settings = {"relationship": "friends", "context": 10,
                      "jev_key": configured, "llm_key": configured,
                      "jev_provider": "openrouter", "jev_model": "typesafe/jev-1.13",
+                     "jev_base_url": "",
                      "draft_provider": "deepseek", "draft_model": "deepseek-flash",
                      "draft_base_url": "", "reply_target": True,
                      "style": "话少，基本不用标点，急了才发感叹号", "thinking": False,
+                     "self_rank": True,
                      "check_update": True, "debug_view": args.state == "debug"}
 
     def save_demo_settings(relationship_text=None, context_n=None, *, jev_provider_text=None,
-                           jev_key_text=None, jev_model_text=None, draft_provider_text=None,
+                           jev_key_text=None, jev_model_text=None, jev_base_url_text=None,
+                           draft_provider_text=None,
                            llm_key_text=None, draft_model_text=None, draft_base_url_text=None,
                            reply_target_on=None, style_text=None, thinking_on=None,
+                           self_rank_on=None,
                            check_update_on=None, debug_view_on=None):
         if relationship_text:
             demo_settings["relationship"] = relationship_text
         if context_n is not None:
             demo_settings["context"] = context_n
         for name, value in (("jev_provider", jev_provider_text), ("jev_model", jev_model_text),
+                            ("jev_base_url", jev_base_url_text),
                             ("draft_provider", draft_provider_text), ("draft_model", draft_model_text),
                             ("draft_base_url", draft_base_url_text), ("style", style_text)):
             if value is not None:
@@ -138,6 +143,7 @@ def main() -> int:
             if key:
                 demo_settings[name] = key
         for name, value in (("reply_target", reply_target_on), ("thinking", thinking_on),
+                            ("self_rank", self_rank_on),
                             ("check_update", check_update_on), ("debug_view", debug_view_on)):
             if value is not None:
                 demo_settings[name] = bool(value)
@@ -165,12 +171,14 @@ def main() -> int:
         context=lambda: demo_settings["context"],
         jev_provider=lambda: demo_settings["jev_provider"],
         jev_model=lambda: demo_settings["jev_model"],
+        jev_base_url=lambda: demo_settings["jev_base_url"],
         draft_provider=lambda: demo_settings["draft_provider"],
         draft_model=lambda: demo_settings["draft_model"],
         draft_base_url=lambda: demo_settings["draft_base_url"],
         reply_target=lambda: demo_settings["reply_target"],
         style=lambda: demo_settings["style"],
         thinking=lambda: demo_settings["thinking"],
+        self_rank=lambda: demo_settings["self_rank"],
         check_update=lambda: demo_settings["check_update"],
         debug_view=lambda: demo_settings["debug_view"],
         save=save_demo_settings,
