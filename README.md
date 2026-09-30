@@ -19,7 +19,7 @@
 
 👉 **[下载最新版](https://github.com/Ar234C-3/jev-chat-windows/releases/latest)**
 
-1. 在 Releases 页下载 `jev-chat-windows-vX.Y.Z.zip`（约 146 MB）
+1. 在 Releases 页下载 `jev-chat-windows-vX.Y.Z.zip`（约 170 MB）
 2. 解压到一个固定目录（整个文件夹一起，exe 要用旁边那堆文件）
 3. 双击 `jev-chat-windows.exe`
 
