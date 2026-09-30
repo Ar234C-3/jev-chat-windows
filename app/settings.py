@@ -12,7 +12,8 @@ import json
 import os
 import sys  # 只为下面这一处：打包后 __file__ 指向临时解包目录，config.json 得放在 exe 旁边才存得住
 
-from core.providers import CUSTOM, DRAFT_PROVIDERS, JEV_ENV, JEV_PROVIDERS, LEGACY, LLM_ENV
+from core.providers import (CUSTOM, DRAFT_PROVIDERS, JEV_CUSTOM, JEV_ENV, JEV_PROVIDERS,
+                            LEGACY, LLM_ENV)
 
 _ROOT = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False)
          else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -76,6 +77,10 @@ def draft_base_url() -> str:
     """自定义来源的 Base URL；其余来源用表里的，这里返回空。"""
     return str(_read("draft_base_url") or "") if draft_provider() in CUSTOM else ""
 
+def jev_base_url() -> str:
+    """判断的自定义 OpenAI 兼容来源的 Base URL；其余判断来源返回空。"""
+    return str(_read("jev_base_url") or "") if jev_provider() in JEV_CUSTOM else ""
+
 def reply_target() -> bool:
     """群聊指定回复对象：开了才在界面上选回复给谁、才把对象喂给模型。默认关。"""
     return bool(_read("reply_target", False))
@@ -83,6 +88,10 @@ def reply_target() -> bool:
 def thinking() -> bool:
     """起草时是否开思考模式：慢且贵，默认关。只有 DeepSeek / OpenRouter / Anthropic / Gemini 吃它。"""
     return bool(_read("thinking", False))
+
+def self_rank() -> bool:
+    """排序由起草模型自评（方案②，默认开）：省一次独立排序调用；关了走原版三段式的独立排序。"""
+    return bool(_read("self_rank", True))
 
 def check_update() -> bool:
     """启动时要不要去 GitHub 查一次最新版本号：默认开，只出这一次网，设置里能关。"""
@@ -153,10 +162,12 @@ has_key = has_jev_key  # 旧名字：界面上「配没配好」问的就是判�
 
 def save(relationship_text: str | None = None, context_n: int | None = None, *,
          jev_provider_text: str | None = None, jev_key_text: str | None = None,
-         jev_model_text: str | None = None, draft_provider_text: str | None = None,
+         jev_model_text: str | None = None, jev_base_url_text: str | None = None,
+         draft_provider_text: str | None = None,
          llm_key_text: str | None = None, draft_model_text: str | None = None,
          draft_base_url_text: str | None = None, reply_target_on: bool | None = None,
          style_text: str | None = None, thinking_on: bool | None = None,
+         self_rank_on: bool | None = None,
          check_update_on: bool | None = None, debug_view_on: bool | None = None,
          lang_text: str | None = None) -> None:
     """每个参数为空/None = 保留当前值。两把 key 写进程环境 + HKCU\\Environment，不写任何文件。"""
@@ -182,10 +193,12 @@ def save(relationship_text: str | None = None, context_n: int | None = None, *,
         "relationship": relationship_text or relationship(), "context": n,
         "style": keep(style_text, "style"),
         "jev_provider": jev, "jev_model": keep(jev_model_text, "jev_model"),
+        "jev_base_url": keep(jev_base_url_text, "jev_base_url"),
         "draft_provider": draft, "draft_model": keep(draft_model_text, "draft_model"),
         "draft_base_url": keep(draft_base_url_text, "draft_base_url"),
         "reply_target": flag(reply_target_on, reply_target),
         "thinking": flag(thinking_on, thinking),
+        "self_rank": flag(self_rank_on, self_rank),
         "check_update": flag(check_update_on, check_update),
         "debug_view": flag(debug_view_on, debug_view),
     }
