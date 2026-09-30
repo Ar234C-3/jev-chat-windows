@@ -14,7 +14,7 @@ import traceback
 from collections import deque
 
 from app import settings, update, worker
-from app.capture import find_chat_hwnd
+from app.capture import find_chat_hwnd, foreground_chat
 from app.fill import fill
 from app.overlay import Overlay, stage_detail
 from app.version import VERSION
@@ -242,6 +242,30 @@ def drain():
             ov.set_status("你已回复，等待对方的新消息")
 
 
+def poll_foreground():
+    """焦点跟随（粘性）：点到哪个聊天窗口，采集就切到哪个；焦点在别处（编辑器、悬浮窗）
+    保持上次的选择不动。暂停期间不切，恢复后的下一个 tick 自然补切。
+    切换 = 杀旧 worker 换新 hwnd——Reader 的去重状态跟着进程走，切换后新一轮首帧
+    会把当前可见消息当新消息报一次（跟启动时一样），等于切过去立刻给这个会话出候选。"""
+    global child
+    if not capture_on.is_set():
+        return
+    hit = foreground_chat()
+    if not hit or hit[0] == state["hwnd"]:
+        return
+    hwnd, app = hit
+    capture_on.clear()
+    if child is not None:
+        child.terminate()
+        child.join(3)
+        child = None
+    state["hwnd"], state["app"] = hwnd, app.key
+    state["area"] = None
+    child = spawn_worker()
+    capture_on.set()
+    ov.set_status(T("采集窗口已切到 {name}").format(name=app.label), "success")
+
+
 def drain_stages():
     """分段进度 → 状态栏（哪段在跑、停在哪，慢的时候一眼看得到）。
     判断/排序失败那一下进聊天记录：带安全分类的原因（超时/HTTP 状态/解析失败，
@@ -268,6 +292,7 @@ def drain_stages():
 
 def tick():
     try:
+        poll_foreground()
         drain_stages()
         drain()
         while not update_result.empty():

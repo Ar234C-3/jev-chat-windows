@@ -12,22 +12,61 @@ from app import chatapps
 u32 = ctypes.windll.user32
 
 
+def _exe_of(pid: int) -> str:
+    """pid → 进程的 exe 文件名（小写），查不到返回空串。"""
+    k32 = ctypes.windll.kernel32
+    h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return ""
+    buf, size = ctypes.create_unicode_buffer(1024), ctypes.c_uint(1024)
+    ok = k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
+    k32.CloseHandle(h)
+    return os.path.basename(buf.value).lower() if ok else ""
+
+
+def _valid_target(app, title: str) -> bool:
+    """这扇窗能不能当采集目标（前台跟选用）：配了 main_title 的（微信）必须标题全等——
+    同进程的工具窗/看图窗不算；没配的（Kakao/QQ）只要不在 skip_titles（主列表/主面板）里就算。"""
+    if app.main_title:
+        return title == app.main_title
+    return title not in app.skip_titles
+
+
+_fg_cache: tuple[int, object] = (0, None)
+
+
+def foreground_chat():
+    """前台窗口若是已知聊天软件的有效聊天窗 → (hwnd, app)，否则 None（粘性：焦点在别处
+    返回 None，调用方保持上次的选择不切）。按 hwnd 缓存——tick 每 50ms 调一次，
+    焦点没动就只做一次 GetForegroundWindow，进程名都懒得查。"""
+    global _fg_cache
+    fg = u32.GetForegroundWindow()
+    if not fg:
+        return None
+    if fg == _fg_cache[0]:
+        return _fg_cache[1]
+    hit = None
+    if u32.IsWindowVisible(fg):
+        pid = ctypes.c_ulong()
+        u32.GetWindowThreadProcessId(fg, ctypes.byref(pid))
+        app = chatapps.by_exe(_exe_of(pid.value))
+        if app is not None:
+            title = ctypes.create_unicode_buffer(256)
+            u32.GetWindowTextW(fg, title, 256)
+            if _valid_target(app, title.value):
+                hit = (fg, app)
+    _fg_cache = (fg, hit)
+    return hit
+
+
 def find_chat_hwnd(want=None):
     """枚举可见顶层窗口，按进程名认出聊天软件，返回 (hwnd, ChatApp)。
+    前台优先：焦点正落在某个聊天窗口上就用它（微信和 QQ 同开时不再死认微信），
+    否则退回按 APPS 顺序挑（先微信后 Kakao 后 QQ，窗口内挑最大的）。
     微信：同进程还有工具窗和看图窗，面积可能更大，所以按标题挑主窗口。
     KakaoTalk：一个对话一个窗口，主列表窗（标题「카카오톡」）不是目标，挑剩下最大的那个。
     want=某个 ChatApp 时只找它，None 时先到先得（两个都开着就按 APPS 顺序）。"""
-    k32 = ctypes.windll.kernel32
     found = []
-
-    def exe_of(pid):
-        h = k32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
-        if not h:
-            return ""
-        buf, size = ctypes.create_unicode_buffer(1024), ctypes.c_uint(1024)
-        ok = k32.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(size))
-        k32.CloseHandle(h)
-        return os.path.basename(buf.value).lower() if ok else ""
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
     def cb(hwnd, _):
@@ -35,7 +74,7 @@ def find_chat_hwnd(want=None):
             return True
         pid = ctypes.c_ulong()
         u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        app = chatapps.by_exe(exe_of(pid.value))
+        app = chatapps.by_exe(_exe_of(pid.value))
         if app and (want is None or app is want):
             title = ctypes.create_unicode_buffer(256)
             u32.GetWindowTextW(hwnd, title, 256)
@@ -48,6 +87,10 @@ def find_chat_hwnd(want=None):
     u32.EnumWindows(cb, 0)
     if not found:
         raise RuntimeError("没找到聊天窗口，开着吗？")
+    fg = u32.GetForegroundWindow()
+    for hwnd, title, _area, app in found:
+        if hwnd == fg and _valid_target(app, title):
+            return hwnd, app
     for app in chatapps.APPS.values():
         mine = [f for f in found if f[3] is app]
         if not mine:
@@ -65,6 +108,14 @@ def find_chat_hwnd(want=None):
 def find_wechat_hwnd():
     """老名字：只返回 hwnd，给还没改过来的调用方用。"""
     return find_chat_hwnd()[0]
+
+
+def window_title(hwnd) -> str:
+    """顶层窗口标题原文。QQ NT 的窗口标题就是当前会话名（标签式主窗跟着激活标签走），
+    比 OCR 头部可靠——日文/特殊字符的会话名 OCR 根本读不出（实测 read_title 返回 ''）。"""
+    buf = ctypes.create_unicode_buffer(256)
+    u32.GetWindowTextW(hwnd, buf, 256)
+    return buf.value
 
 
 def unminimize(hwnd):
@@ -94,6 +145,26 @@ def chat_area(full, header_h=60):
     col = isbg[H // 4: H * 3 // 4].mean(0)
     x0 = int(np.argmax(col > 0.3))
     x1 = W - int(np.argmax(col[::-1] > 0.3))
+    # QQ 标签式主窗：标签条与面板同底色，列规则分不开，但中间有根中性竖线（实测 x=315）。
+    # 门禁：线左侧必须仍是底色主导——微信联系人列表底色不同，天然不会走到这里；独立聊天窗没线，扫完不动。
+    mid = (x0 + x1) // 2
+    if mid - x0 > 120 and isbg[H // 4: H * 3 // 4, x0 + 40:mid].mean() > 0.5:
+        # 逐列找中性竖线（实测分界线只有 1px 宽，不能抽样列）。从右往左：首个命中就是最右，
+        # 立刻停；列内行抽样 + RGB 打包成 int 再 unique，比 unique(axis=0) 快一个量级。
+        for x in range(mid - 1, x0 + 39, -1):
+            colpix = full[int(H * 0.08):int(H * 0.92):8, x]
+            pack = ((colpix[:, 0].astype(np.int32) << 16)
+                    | (colpix[:, 1].astype(np.int32) << 8) | colpix[:, 2])
+            v, cnt = np.unique(pack, return_counts=True)
+            i = int(cnt.argmax())
+            frac = int(cnt[i]) / len(pack)
+            m = int(v[i])
+            mode = ((m >> 16) & 255, (m >> 8) & 255, m & 255)
+            if (frac > 0.75 and abs(mode[0] - mode[1]) < 40 and abs(mode[1] - mode[2]) < 40
+                    and abs(mode[0] - int(bg[0])) + abs(mode[1] - int(bg[1]))
+                    + abs(mode[2] - int(bg[2])) > 30):
+                x0 = x + 3
+                break
     row = isbg[:, x0:x1].mean(1)
     y0 = int(np.argmax(row > 0.9))
     y1 = H - int(np.argmax(row[::-1] > 0.9))
@@ -102,6 +173,24 @@ def chat_area(full, header_h=60):
     seps = [int(s) for i, s in enumerate(seps) if i == 0 or s - seps[i - 1] > 3]
     below = [s for s in seps if s > y0 + 0.45 * (y1 - y0)]
     y_in = below[0] if below else y1
+    if not below:
+        # 输入框地标 = 工具栏那排图标（蓝调灰 #878b99 系、横跨大半宽度）。
+        # 实测 QQ：浅蓝主题的输入框与聊天区同底色，颜色断崖不存在；只认这排图标。
+        # 括住「横跨 35% 宽度」是防时间戳——时间戳也是这个灰，但居中且很窄。
+        lo = int(y0 + 0.6 * (y1 - y0))
+        zone = full[lo:y1, x0:x1]
+        r, g, b = zone[..., 0].astype(int), zone[..., 1].astype(int), zone[..., 2].astype(int)
+        hit = (np.abs(r - g) < 12) & (b - r >= 8) & (b - r <= 45) & (r >= 105) & (r <= 180)
+        if int(hit.sum()) > 150:
+            ys, xs = np.nonzero(hit)
+            # 行浓度：一半以上的命中要挤在 16 行窄带里才是工具栏；散落全图的抗锯齿杂点不算
+            hist = np.bincount(ys, minlength=zone.shape[0])
+            win = np.convolve(hist, np.ones(16), "valid")
+            j = int(win.argmax())
+            band = (ys >= j) & (ys < j + 16)
+            if (win[j] > 0.45 * len(ys)
+                    and (int(xs[band].max()) - int(xs[band].min())) > 0.35 * (x1 - x0)):
+                y_in = lo + j - 4
     above = [s for s in seps if y0 + header_h < s < y_in - 50]
     y_top = above[-1] if above else y0 + header_h
     if x1 - x0 < 100 or y_in - y_top < 40:
@@ -166,3 +255,50 @@ class Capture:
 
     def wait(self):
         self.ctl.wait()  # 采集线程若是报错死的，这里把错误抛出来
+
+
+if __name__ == "__main__":
+    # ponytail: 前台跟随的纯逻辑 + 缓存，全 mock 不碰真实窗口。
+    import types as _t
+
+    from app.chatapps import KAKAOTALK, QQ, WECHAT
+
+    assert _valid_target(WECHAT, "微信") and not _valid_target(WECHAT, "微信截图工具")
+    assert _valid_target(KAKAOTALK, "某人的对话") and not _valid_target(KAKAOTALK, "카카오톡")
+    assert _valid_target(QQ, "間水月あいだみずつき") and not _valid_target(QQ, "QQ")
+
+    calls = {"exe": 0}
+
+    def fake_exe(_pid):
+        calls["exe"] += 1
+        return "qq.exe"
+
+    fake_u32 = _t.SimpleNamespace(
+        fg=1234,
+        GetForegroundWindow=lambda: fake_u32.fg,
+        IsWindowVisible=lambda _h: True,
+        GetWindowThreadProcessId=lambda _h, ref: setattr(ref._obj, "value", 7),
+        GetWindowTextW=lambda _h, buf, _n: setattr(buf, "value", "某对话窗"),
+    )
+    # 脚本模式下模块就是 __main__，直接换全局（函数按 globals 找名字）
+    _u32_save, _exe_save = u32, _exe_of
+    u32, _exe_of = fake_u32, fake_exe
+    try:
+        _fg_cache = (0, None)
+        hit = foreground_chat()
+        assert hit is not None and hit[0] == 1234 and hit[1] is QQ
+        assert calls["exe"] == 1
+        foreground_chat()  # 焦点没动 → 走缓存，不再查进程名
+        assert calls["exe"] == 1, "缓存失效"
+        _fg_cache = (0, None)
+        fake_u32.fg = 0  # 没有前台窗口 → None
+        assert foreground_chat() is None
+        _fg_cache = (0, None)
+        fake_u32.fg = 5678
+        fake_u32.GetWindowTextW = lambda _h, buf, _n: setattr(buf, "value", "QQ")
+        assert foreground_chat() is None  # 主面板「QQ」不是采集目标
+        assert calls["exe"] == 2  # 每次焦点变化才查一次进程名
+    finally:
+        u32, _exe_of = _u32_save, _exe_save
+        _fg_cache = (0, None)
+    print("capture ok")

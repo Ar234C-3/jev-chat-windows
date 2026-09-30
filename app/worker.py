@@ -3,13 +3,14 @@
 一次 OCR 250~800ms，放父进程的 Qt 主线程界面就僵了。
 只往队列里丢纯 tuple/str（底色 bg 是 numpy，留在这边不过队列）。帧全程内存，绝不落盘。"""
 import ctypes
+import re
 import time
 import traceback
 
 import numpy as np
 
 from app import chatapps
-from app.capture import Capture, chat_area, unminimize
+from app.capture import Capture, chat_area, unminimize, window_title
 from app.ocr import Reader, read_title, similar
 
 
@@ -82,6 +83,12 @@ def run(q, hwnd, enabled, debug_on, app_key=None):
                     if head is None or not np.array_equal(crop, head):  # 名字没动就别白跑一次 OCR
                         head = crop
                         name = read_title(crop, app)
+                        if app.title_from_window:
+                            # QQ：窗口标题=当前会话名（比 OCR 可靠，日文名也认得出）。
+                            # 未激活时标题尾部的「等N个会话」是未读徽标，会随计数变——剥掉，
+                            # 否则每来一条未读就分裂出一个新会话。
+                            wt = re.sub(r"等\d+个会话$", "", window_title(hwnd)).strip()
+                            name = wt or name
                         # OCR 抖一下（「小分队」↔「小分认」）不能分裂出一个新会话
                         name = next((k for k in readers if similar(k, name)), name) if name else ""
                         # ponytail: 认不出就沿用上次；开头就认不出给个占位名，总比把消息全丢了强
